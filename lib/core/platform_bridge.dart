@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart'; // ఈ ఇంపోర్ట్ వల్లే debugPrint ఎర్రర్ పోతుంది
 
 class NativeCameraBridge {
   static const MethodChannel _channel = MethodChannel('cinematic_camera/methods');
