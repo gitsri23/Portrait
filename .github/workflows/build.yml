@@ -1,0 +1,47 @@
+name: Build Release APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Allows you to run the build manually from the GitHub Actions tab
+
+jobs:
+  build:
+    name: Build & Export APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout the code (Latest v4)
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. Setup Java (Required for Android build, v4)
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      # 3. Setup Flutter Environment
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true # Speeds up future builds
+
+      # 4. Install Dependencies
+      - name: Get Packages
+        run: flutter pub get
+
+      # 5. Build the Release APK
+      - name: Build APK
+        run: flutter build apk --release
+
+      # 6. Upload Artifact (Using v4 to fix the v1 embed error)
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: cinematic-camera-release
+          path: build/app/outputs/flutter-apk/app-release.apk
+          compression-level: 0 # Faster upload since APK is already compressed
