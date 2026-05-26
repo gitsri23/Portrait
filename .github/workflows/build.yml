@@ -28,7 +28,7 @@ jobs:
           channel: stable
           cache: true
 
-      # 🚀 1. పాత ఫైల్స్ డిలీట్ చేసి కొత్త ఆండ్రాయిడ్ ప్రాజెక్ట్ క్రియేషన్
+      # 🚀 1. ఫ్రెష్ ఆండ్రాయిడ్ కోర్ క్రియేషన్
       - name: Recreate Android Project Core
         run: |
           rm -rf android
@@ -62,7 +62,7 @@ jobs:
             uses-material-design: true
           EOF
 
-      # 🛠️ 3. కెమెరా మానిఫెస్ట్ ఇంజెక్షన్ 
+      # 🛠️ 3. పర్ఫెక్ట్ పర్మిషన్స్ తో AndroidManifest.xml ఇంజెక్షన్ 
       - name: Inject AndroidManifest.xml
         run: |
           cat << 'EOF' > android/app/src/main/AndroidManifest.xml
@@ -84,8 +84,8 @@ jobs:
           </manifest>
           EOF
 
-      # 🎥 4. CameraX & ML Kit డిపెండెన్సీలను యాడ్ చేయడం
-      - name: Inject CameraX & ML Kit Dependencies
+      # 🎥 4. CameraX Extensions (BOKEH) డిపెండెన్సీ ఇంజెక్షన్
+      - name: Inject CameraX Native Dependencies
         run: |
           cat << 'EOF' >> android/app/build.gradle.kts
           
@@ -97,12 +97,12 @@ jobs:
               implementation("androidx.camera:camera-view:$cameraxVersion")
               implementation("androidx.camera:camera-video:$cameraxVersion")
               
-              // Google ML Kit for Portrait Blur
-              implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta4")
+              // గూగుల్ ఆఫీషియల్ హార్డ్‌వేర్ బోకె ఎక్స్‌టెన్షన్స్
+              implementation("androidx.camera:camera-extensions:$cameraxVersion")
           }
           EOF
 
-      # 🧠 5. నేటివ్ Kotlin కెమెరా కోడ్ (MainActivity.kt) - FIXED ENGINE INITIALIZATION
+      # 🧠 5. నేటివ్ ఆటో-బోకె (MainActivity.kt) కోడ్ ఇంజెక్షన్
       - name: Inject Custom Native Kotlin Code
         run: |
           mkdir -p android/app/src/main/kotlin/com/example/cinematic_camera
@@ -111,19 +111,16 @@ jobs:
 
           import android.content.ContentValues
           import android.provider.MediaStore
-          import android.util.Size
           import android.view.Surface
           import androidx.annotation.NonNull
           import androidx.camera.core.*
+          import androidx.camera.extensions.ExtensionMode
+          import androidx.camera.extensions.ExtensionsManager
           import androidx.camera.lifecycle.ProcessCameraProvider
           import androidx.camera.video.*
           import androidx.camera.video.VideoCapture
           import androidx.core.content.ContextCompat
           import androidx.lifecycle.LifecycleOwner
-          import com.google.mlkit.vision.common.InputImage
-          import com.google.mlkit.vision.segmentation.Segmentation
-          import com.google.mlkit.vision.segmentation.Segmenter
-          import com.google.mlkit.vision.segmentation.selfie.SelfieSegmenterOptions
           import io.flutter.embedding.android.FlutterActivity
           import io.flutter.embedding.engine.FlutterEngine
           import io.flutter.plugin.common.MethodChannel
@@ -142,7 +139,6 @@ jobs:
               
               private var videoCapture: VideoCapture<Recorder>? = null
               private var recording: Recording? = null
-              private var segmenter: Segmenter? = null
 
               override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
                   super.configureFlutterEngine(flutterEngine)
@@ -152,7 +148,8 @@ jobs:
                       when (call.method) {
                           "initCamera" -> {
                               textureEntry = flutterEngine.renderer.createSurfaceTexture()
-                              startCamera(result)
+                              result.success(textureEntry?.id())
+                              startCamera()
                           }
                           "startRecording" -> {
                               startVideoRecording()
@@ -166,7 +163,7 @@ jobs:
                           "setMode" -> result.success(null)
                           "switchCamera" -> {
                               lensFacing = if (CameraSelector.LENS_FACING_FRONT == lensFacing) CameraSelector.LENS_FACING_BACK else CameraSelector.LENS_FACING_FRONT
-                              startCamera(null) 
+                              startCamera() 
                               result.success(null)
                           }
                           else -> result.notImplemented()
@@ -174,46 +171,21 @@ jobs:
                   }
               }
 
-              @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
-              private fun startCamera(result: MethodChannel.Result?) {
+              private fun startCamera() {
                   val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
                   cameraProviderFuture.addListener({
                       try {
                           cameraProvider = cameraProviderFuture.get()
 
-                          if (segmenter == null) {
-                              val options = SelfieSegmenterOptions.Builder()
-                                  .setDetectorMode(SelfieSegmenterOptions.STREAM_MODE)
-                                  .enableRawSizeMask()
-                                  .build()
-                              segmenter = Segmentation.getClient(options)
-                          }
-
-                          val preview = Preview.Builder().setTargetResolution(Size(1080, 1920)).build()
+                          // 1. ఇన్‌స్టంట్ 16:9 వ్యూఫైండర్ బాక్స్
+                          val preview = Preview.Builder()
+                              .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                              .build()
                           
                           val recorder = Recorder.Builder()
                               .setQualitySelector(QualitySelector.from(Quality.HIGHEST))
                               .build()
                           videoCapture = VideoCapture.withOutput(recorder)
-
-                          // FIXED: Optimized resolution (480x640) for ML processing to prevent engine lockup
-                          val imageAnalyzer = ImageAnalysis.Builder()
-                              .setTargetResolution(Size(480, 640))
-                              .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                              .build()
-                              .also {
-                                  it.setAnalyzer(cameraExecutor) { imageProxy ->
-                                      val mediaImage = imageProxy.image
-                                      if (mediaImage != null && segmenter != null) {
-                                          val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-                                          segmenter?.process(image)
-                                              ?.addOnSuccessListener { imageProxy.close() }
-                                              ?.addOnFailureListener { imageProxy.close() }
-                                      } else {
-                                          imageProxy.close()
-                                      }
-                                  }
-                              }
 
                           textureEntry?.surfaceTexture()?.apply {
                               setDefaultBufferSize(1080, 1920)
@@ -223,20 +195,31 @@ jobs:
                               }
                           }
 
-                          val cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
-                          cameraProvider?.unbindAll()
+                          // 2. గూగుల్ ఎక్స్‌టెన్షన్స్ మేనేజర్ లోడింగ్
+                          val extensionsManagerFuture = ExtensionsManager.getInstanceAsync(this, cameraProvider!!)
+                          extensionsManagerFuture.addListener({
+                              val extensionsManager = extensionsManagerFuture.get()
+                              
+                              var cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
 
-                          // FIXED: Universal fallback catching ALL binding exceptions
-                          try {
-                              cameraProvider?.bindToLifecycle(this as LifecycleOwner, cameraSelector, preview, videoCapture, imageAnalyzer)
-                          } catch (e: Exception) {
-                              cameraProvider?.unbindAll()
-                              cameraProvider?.bindToLifecycle(this as LifecycleOwner, cameraSelector, preview, videoCapture)
-                          }
+                              // 3. ఫోన్ లో నేటివ్ బోకె (Portrait Blur) హార్డ్‌వేర్ ఉంటే దాన్ని ఆటోమెటిక్ గా ఆన్ చేస్తుంది
+                              if (extensionsManager.isExtensionAvailable(cameraSelector, ExtensionMode.BOKEH)) {
+                                  cameraSelector = extensionsManager.getExtensionEnabledCameraSelector(cameraSelector, ExtensionMode.BOKEH)
+                              }
 
-                          result?.success(textureEntry?.id())
+                              try {
+                                  cameraProvider?.unbindAll()
+                                  cameraProvider?.bindToLifecycle(this as LifecycleOwner, cameraSelector, preview, videoCapture)
+                              } catch (e: Exception) {
+                                  // సేఫ్టీ ఫాల్‌బ్యాక్
+                                  cameraProvider?.unbindAll()
+                                  cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
+                                  cameraProvider?.bindToLifecycle(this as LifecycleOwner, cameraSelector, preview, videoCapture)
+                              }
+                          }, ContextCompat.getMainExecutor(this))
+
                       } catch (exc: Exception) {
-                          result?.error("CAMERA_ERROR", exc.localizedMessage, null)
+                          // హార్డ్‌వేర్ సైలెంట్ ఎర్రర్ మేనేజ్‌మెంట్
                       }
                   }, ContextCompat.getMainExecutor(this))
               }
@@ -270,7 +253,6 @@ jobs:
               override fun onDestroy() {
                   super.onDestroy()
                   cameraExecutor.shutdown()
-                  segmenter?.close()
               }
           }
           EOF
@@ -288,8 +270,6 @@ jobs:
         with:
           tag_name: v1.0.0
           name: Portrait Camera Release v1.0.0
-          draft: false
-          prerelease: false
           files: |
             build/app/outputs/flutter-apk/app-release.apk
         env:
