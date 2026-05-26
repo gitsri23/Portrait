@@ -1,4 +1,5 @@
 name: portrait_blur
+
 description: AI Portrait Blur Video App
 
 publish_to: "none"
@@ -27,20 +28,14 @@ dependencies:
   # Permissions
   permission_handler: ^11.3.1
 
-  # FFmpeg Video Processing
-  ffmpeg_kit_flutter_new_video: ^3.0.0
+  # FFmpeg
+  ffmpeg_kit_flutter_new_video: ^2.0.0
 
   # AI Segmentation
   google_mlkit_selfie_segmentation: ^0.9.0
 
-  # UI Fonts
+  # Fonts
   google_fonts: ^6.2.1
-
-  # State Management
-  flutter_riverpod: ^2.5.1
-
-  # Animations
-  animations: ^2.0.11
 
 dev_dependencies:
   flutter_test:
