@@ -26,17 +26,8 @@ class PortraitApp extends StatelessWidget {
           displayColor: const Color(0xFFF5F5F7),
         ),
       ),
-      home: const VideoEditorScreen(),
+      home: const VideoEditorView(), // డైరెక్ట్ గా ఎడిటర్ వ్యూ కి వెళ్ళిపోతుంది
     );
-  }
-}
-
-class VideoEditorScreen extends StatefulWidget {
-  const VideoEditorScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const VideoEditorView();
   }
 }
 
@@ -74,13 +65,15 @@ class _VideoEditorViewState extends State<VideoEditorView> {
   void _exportVideo() {
     setState(() => _isProcessing = true);
     Future.delayed(const Duration(seconds: 4), () {
-      setState(() => _isProcessing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("⚡ Cinematic Portrait Video Exported to Gallery!"),
-          backgroundColor: Colors.green,
-        ),
-      );
+      if (mounted) {
+        setState(() => _isProcessing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("⚡ Cinematic Portrait Video Exported to Gallery!"),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     });
   }
 
