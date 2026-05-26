@@ -102,7 +102,7 @@ jobs:
           }
           EOF
 
-      # 🧠 5. నేటివ్ Kotlin కెమెరా కోడ్ (MainActivity.kt) - CRASH PROOF VERSION
+      # 🧠 5. నేటివ్ Kotlin కెమెరా కోడ్ (MainActivity.kt) - FIXED ENGINE INITIALIZATION
       - name: Inject Custom Native Kotlin Code
         run: |
           mkdir -p android/app/src/main/kotlin/com/example/cinematic_camera
@@ -142,7 +142,7 @@ jobs:
               
               private var videoCapture: VideoCapture<Recorder>? = null
               private var recording: Recording? = null
-              private var segmenter: Segmenter? = null // క్రాష్ అవ్వకుండా Lazy గా లోడ్ చేస్తాం
+              private var segmenter: Segmenter? = null
 
               override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
                   super.configureFlutterEngine(flutterEngine)
@@ -151,12 +151,8 @@ jobs:
                   MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
                       when (call.method) {
                           "initCamera" -> {
-                              try {
-                                  textureEntry = flutterEngine.renderer.createSurfaceTexture()
-                                  startCamera(result)
-                              } catch (e: Exception) {
-                                  result.error("INIT_FAIL", e.message, null)
-                              }
+                              textureEntry = flutterEngine.renderer.createSurfaceTexture()
+                              startCamera(result)
                           }
                           "startRecording" -> {
                               startVideoRecording()
@@ -185,7 +181,6 @@ jobs:
                       try {
                           cameraProvider = cameraProviderFuture.get()
 
-                          // Safe ML Kit Initialization
                           if (segmenter == null) {
                               val options = SelfieSegmenterOptions.Builder()
                                   .setDetectorMode(SelfieSegmenterOptions.STREAM_MODE)
@@ -201,8 +196,9 @@ jobs:
                               .build()
                           videoCapture = VideoCapture.withOutput(recorder)
 
+                          // FIXED: Optimized resolution (480x640) for ML processing to prevent engine lockup
                           val imageAnalyzer = ImageAnalysis.Builder()
-                              .setTargetResolution(Size(1080, 1920))
+                              .setTargetResolution(Size(480, 640))
                               .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                               .build()
                               .also {
@@ -230,11 +226,10 @@ jobs:
                           val cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
                           cameraProvider?.unbindAll()
 
-                          // హార్డ్‌వేర్ క్రాష్ అవ్వకుండా Fallback లాజిక్
+                          // FIXED: Universal fallback catching ALL binding exceptions
                           try {
                               cameraProvider?.bindToLifecycle(this as LifecycleOwner, cameraSelector, preview, videoCapture, imageAnalyzer)
-                          } catch (e: IllegalArgumentException) {
-                              // ఒకవేళ ఫోన్ 3 పనులని ఒకేసారి తట్టుకోలేకపోతే, ML Kit ని డ్రాప్ చేసి కనీసం కెమెరా రన్ అయ్యేలా చేస్తుంది.
+                          } catch (e: Exception) {
                               cameraProvider?.unbindAll()
                               cameraProvider?.bindToLifecycle(this as LifecycleOwner, cameraSelector, preview, videoCapture)
                           }
@@ -283,7 +278,7 @@ jobs:
       - name: Fetch and Verify Assets
         run: flutter pub get
 
-      # 🚀 6. ప్రొడక్షన్ రిలీజ్ APK కంపైలేషన్ (FIXED: Removed --obfuscate to prevent native JNI crashes)
+      # 🚀 6. ప్రొడక్షన్ రిలీజ్ APK కంపైలేషన్
       - name: Compile Release APK (Safe Mode)
         run: flutter build apk --release --no-tree-shake-icons
 
