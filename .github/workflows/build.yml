@@ -1,0 +1,88 @@
+name: Cinematic Camera Production Build
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 17
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # 🚀 1. Fresh Android Base Creation with cinematic_camera name
+      - name: Recreate Android Project Core
+        run: |
+          rm -rf android
+          flutter create . --project-name cinematic_camera --org com.example --platforms=android
+
+      # 🛠️ 2. Correct Android Manifest Injection with Portrait Label
+      - name: Inject AndroidManifest.xml
+        run: |
+          cat << 'EOF' > android/app/src/main/AndroidManifest.xml
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.cinematic_camera">
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+              <application android:label="Portrait" android:name="${applicationName}" android:icon="@mipmap/ic_launcher" android:requestLegacyExternalStorage="true">
+                  <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop" android:theme="@style/LaunchTheme" android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" android:hardwareAccelerated="true" android:windowSoftInputMode="adjustResize">
+                      <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+                  <meta-data android:name="flutterEmbedding" android:value="2" />
+              </application>
+          </manifest>
+          EOF
+
+      # 🧠 3. Correct MainActivity.kt Injection
+      - name: Inject Custom Native Kotlin Code
+        run: |
+          mkdir -p android/app/src/main/kotlin/com/example/cinematic_camera
+          cat << 'EOF' > android/app/src/main/kotlin/com/example/cinematic_camera/MainActivity.kt
+          package com.example.cinematic_camera
+
+          import io.flutter.embedding.android.FlutterActivity
+
+          class MainActivity: FlutterActivity() {
+          }
+          EOF
+
+      - name: Fetch Dependencies
+        run: flutter pub get
+
+      # 🚀 4. Compile Release APK
+      - name: Compile Release APK
+        run: flutter build apk --release --no-tree-shake-icons
+
+      # 📦 5. Upload to GitHub Releases
+      - name: Create Production GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: Portrait Camera Release v1.0.0
+          draft: false
+          prerelease: false
+          files: |
+            build/app/outputs/flutter-apk/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
