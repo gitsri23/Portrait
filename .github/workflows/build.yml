@@ -62,7 +62,7 @@ jobs:
             uses-material-design: true
           EOF
 
-      # 🛠️ 3. కెమెరా మానిఫెస్ట్ ఇంజెక్షన్ (FIXED: ${applicationName} error)
+      # 🛠️ 3. కెమెరా మానిఫెస్ట్ ఇంజెక్షన్ 
       - name: Inject AndroidManifest.xml
         run: |
           cat << 'EOF' > android/app/src/main/AndroidManifest.xml
@@ -84,8 +84,8 @@ jobs:
           </manifest>
           EOF
 
-      # 🎥 4. CameraX డిపెండెన్సీలను build.gradle.kts కి యాడ్ చేయడం
-      - name: Inject CameraX Dependencies
+      # 🎥 4. CameraX & ML Kit డిపెండెన్సీలను build.gradle.kts కి యాడ్ చేయడం
+      - name: Inject CameraX & ML Kit Dependencies
         run: |
           cat << 'EOF' >> android/app/build.gradle.kts
           
@@ -95,29 +95,41 @@ jobs:
               implementation("androidx.camera:camera-camera2:$cameraxVersion")
               implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
               implementation("androidx.camera:camera-view:$cameraxVersion")
+              implementation("androidx.camera:camera-video:$cameraxVersion")
+              
+              // Google ML Kit for Portrait Blur (Selfie Segmentation)
+              implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta4")
           }
           EOF
 
-      # 🧠 5. నేటివ్ Kotlin కెమెరా కోడ్ (MainActivity.kt) ఇంజెక్షన్ (FIXED: surfaceTexture() syntax)
+      # 🧠 5. నేటివ్ Kotlin కెమెరా కోడ్ (MainActivity.kt) - ML Kit తో సహా
       - name: Inject Custom Native Kotlin Code
         run: |
           mkdir -p android/app/src/main/kotlin/com/example/cinematic_camera
           cat << 'EOF' > android/app/src/main/kotlin/com/example/cinematic_camera/MainActivity.kt
           package com.example.cinematic_camera
 
-          import android.graphics.SurfaceTexture
+          import android.content.ContentValues
+          import android.provider.MediaStore
           import android.util.Size
           import android.view.Surface
           import androidx.annotation.NonNull
-          import androidx.camera.core.CameraSelector
-          import androidx.camera.core.Preview
+          import androidx.camera.core.*
           import androidx.camera.lifecycle.ProcessCameraProvider
+          import androidx.camera.video.*
+          import androidx.camera.video.VideoCapture
           import androidx.core.content.ContextCompat
           import androidx.lifecycle.LifecycleOwner
+          import com.google.mlkit.vision.common.InputImage
+          import com.google.mlkit.vision.segmentation.Segmentation
+          import com.google.mlkit.vision.segmentation.Segmenter
+          import com.google.mlkit.vision.segmentation.selfie.SelfieSegmenterOptions
           import io.flutter.embedding.android.FlutterActivity
           import io.flutter.embedding.engine.FlutterEngine
           import io.flutter.plugin.common.MethodChannel
           import io.flutter.view.TextureRegistry
+          import java.text.SimpleDateFormat
+          import java.util.Locale
           import java.util.concurrent.ExecutorService
           import java.util.concurrent.Executors
 
@@ -127,10 +139,21 @@ jobs:
               private var cameraProvider: ProcessCameraProvider? = null
               private var lensFacing = CameraSelector.LENS_FACING_BACK
               private lateinit var cameraExecutor: ExecutorService
+              
+              private var videoCapture: VideoCapture<Recorder>? = null
+              private var recording: Recording? = null
+              private lateinit var segmenter: Segmenter
 
               override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
                   super.configureFlutterEngine(flutterEngine)
                   cameraExecutor = Executors.newSingleThreadExecutor()
+
+                  // ML Kit Segmenter Initialization
+                  val options = SelfieSegmenterOptions.Builder()
+                      .setDetectorMode(SelfieSegmenterOptions.STREAM_MODE)
+                      .enableRawSizeMask()
+                      .build()
+                  segmenter = Segmentation.getClient(options)
 
                   MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
                       when (call.method) {
@@ -138,9 +161,20 @@ jobs:
                               textureEntry = flutterEngine.renderer.createSurfaceTexture()
                               startCamera(result)
                           }
-                          "startRecording" -> result.success(null)
-                          "stopRecording" -> result.success(null)
-                          "setMode" -> result.success(null)
+                          "startRecording" -> {
+                              startVideoRecording()
+                              result.success(null)
+                          }
+                          "stopRecording" -> {
+                              recording?.stop()
+                              recording = null
+                              result.success(null)
+                          }
+                          "setMode" -> {
+                              val mode = call.argument<String>("mode") ?: "PORTRAIT"
+                              // mode ని బట్టి బ్లర్ ఆన్/ఆఫ్ చేయొచ్చు భవిష్యత్తులో
+                              result.success(null)
+                          }
                           "switchCamera" -> {
                               lensFacing = if (CameraSelector.LENS_FACING_FRONT == lensFacing) CameraSelector.LENS_FACING_BACK else CameraSelector.LENS_FACING_FRONT
                               startCamera(null) 
@@ -151,11 +185,42 @@ jobs:
                   }
               }
 
+              @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
               private fun startCamera(result: MethodChannel.Result?) {
                   val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
                   cameraProviderFuture.addListener({
                       cameraProvider = cameraProviderFuture.get()
+
                       val preview = Preview.Builder().setTargetResolution(Size(1080, 1920)).build()
+                      
+                      val recorder = Recorder.Builder()
+                          .setQualitySelector(QualitySelector.from(Quality.HIGHEST))
+                          .build()
+                      videoCapture = VideoCapture.withOutput(recorder)
+
+                      // ImageAnalysis for ML Kit
+                      val imageAnalyzer = ImageAnalysis.Builder()
+                          .setTargetResolution(Size(1080, 1920))
+                          .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                          .build()
+                          .also {
+                              it.setAnalyzer(cameraExecutor) { imageProxy ->
+                                  val mediaImage = imageProxy.image
+                                  if (mediaImage != null) {
+                                      val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+                                      segmenter.process(image)
+                                          .addOnSuccessListener { segmentationMask ->
+                                              // ఇక్కడ మనకు Mask వస్తుంది! దీన్ని OpenGL కి పంపి బ్లర్ చేయాలి.
+                                              imageProxy.close()
+                                          }
+                                          .addOnFailureListener {
+                                              imageProxy.close()
+                                          }
+                                  } else {
+                                      imageProxy.close()
+                                  }
+                              }
+                          }
 
                       textureEntry?.surfaceTexture()?.apply {
                           setDefaultBufferSize(1080, 1920)
@@ -169,7 +234,7 @@ jobs:
 
                       try {
                           cameraProvider?.unbindAll()
-                          cameraProvider?.bindToLifecycle(this as LifecycleOwner, cameraSelector, preview)
+                          cameraProvider?.bindToLifecycle(this as LifecycleOwner, cameraSelector, preview, videoCapture, imageAnalyzer)
                           result?.success(textureEntry?.id())
                       } catch (exc: Exception) {
                           result?.error("CAMERA_ERROR", "Hardware bind failed", exc.localizedMessage)
@@ -177,9 +242,38 @@ jobs:
                   }, ContextCompat.getMainExecutor(this))
               }
 
+              private fun startVideoRecording() {
+                  val videoCapture = this.videoCapture ?: return
+                  val name = "Cinematic_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
+                  val contentValues = ContentValues().apply {
+                      put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                      put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
+                  }
+
+                  val mediaStoreOutputOptions = MediaStoreOutputOptions
+                      .Builder(contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+                      .setContentValues(contentValues)
+                      .build()
+
+                  recording = videoCapture.output
+                      .prepareRecording(this, mediaStoreOutputOptions)
+                      .withAudioEnabled()
+                      .start(ContextCompat.getMainExecutor(this)) { recordEvent ->
+                          if (recordEvent is VideoRecordEvent.Finalize) {
+                              if (!recordEvent.hasError()) {
+                                  // Video saved successfully
+                              } else {
+                                  recording?.close()
+                                  recording = null
+                              }
+                          }
+                      }
+              }
+
               override fun onDestroy() {
                   super.onDestroy()
                   cameraExecutor.shutdown()
+                  segmenter.close()
               }
           }
           EOF
