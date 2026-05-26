@@ -1,11 +1,10 @@
-name: Portrait Blur Production Build
+name: Android Release APK
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-
-  workflow_dispatch:
 
 jobs:
   build:
@@ -15,33 +14,41 @@ jobs:
       contents: write
 
     steps:
-
-      # ✅ Checkout
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ✅ Java 17
-      - name: Setup Java
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: zulu
           java-version: 17
 
-      # ✅ Flutter
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      # ✅ Recreate Android
-      - name: Recreate Android Project
+      # RECREATE CLEAN ANDROID FOLDER
+      - name: Recreate Android Folder
         run: |
           rm -rf android
           flutter create . --project-name portrait_blur --org com.example --platforms=android
 
-      # ✅ Android Manifest
-      - name: Inject AndroidManifest
+      # FORCE SDK 36 EVERYWHERE
+      - name: Force Android SDK 36
+        run: |
+          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/g' android/app/build.gradle.kts
+          sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 36/g' android/app/build.gradle.kts
+
+          find . -name "build.gradle.kts" -exec sed -i 's/compileSdk = 34/compileSdk = 36/g' {} +
+          find . -name "build.gradle.kts" -exec sed -i 's/targetSdk = 34/targetSdk = 36/g' {} +
+
+          find . -name "build.gradle" -exec sed -i 's/compileSdkVersion 34/compileSdkVersion 36/g' {} +
+          find . -name "build.gradle" -exec sed -i 's/targetSdkVersion 34/targetSdkVersion 36/g' {} +
+
+      # UPDATE MANIFEST
+      - name: Update AndroidManifest
         run: |
           cat << 'EOF' > android/app/src/main/AndroidManifest.xml
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -87,8 +94,8 @@ jobs:
           </manifest>
           EOF
 
-      # ✅ MainActivity
-      - name: Inject MainActivity
+      # FIX MAIN ACTIVITY
+      - name: Create MainActivity
         run: |
           mkdir -p android/app/src/main/kotlin/com/example/portrait_blur
 
@@ -101,34 +108,34 @@ jobs:
           }
           EOF
 
-      # ✅ SDK FIX
-      - name: Fix Android SDK Versions
-        run: |
-          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/g' android/app/build.gradle.kts
-          sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 36/g' android/app/build.gradle.kts
+      # ACCEPT LICENSES
+      - name: Accept Android Licenses
+        run: yes | flutter doctor --android-licenses
 
-      # ✅ Clean
+      # CLEAN
       - name: Flutter Clean
         run: flutter clean
 
-      # ✅ Dependencies
-      - name: Fetch Dependencies
+      # GET PACKAGES
+      - name: Flutter Pub Get
         run: flutter pub get
 
-      # ✅ Build APK
+      # BUILD APK
       - name: Build Release APK
         run: flutter build apk --release --no-tree-shake-icons
 
-      # ✅ Upload APK
-      - name: Upload Release APK
+      # UPLOAD APK
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: portrait-blur-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      # GITHUB RELEASE
+      - name: Release APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: Portrait Blur Release v1.0.0
-          draft: false
-          prerelease: false
-          files: |
-            build/app/outputs/flutter-apk/app-release.apk
-
+          tag_name: v1.${{ github.run_number }}
+          files: build/app/outputs/flutter-apk/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
