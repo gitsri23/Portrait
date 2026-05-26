@@ -1,5 +1,6 @@
-name: portrait_blur_camera
-description: AI Portrait Video Blur Camera
+name: portrait_blur
+description: AI Portrait Blur Video App
+
 publish_to: "none"
 
 version: 1.0.0+1
@@ -11,32 +12,32 @@ dependencies:
   flutter:
     sdk: flutter
 
-  cupertino_icons: ^1.0.6
+  cupertino_icons: ^1.0.8
 
-  # Camera
-  camera: ^0.11.0+1
-
-  # State Management
-  flutter_riverpod: ^2.5.1
-
-  # Permissions
-  permission_handler: ^11.3.1
-
-  # File Paths
-  path_provider: ^2.1.3
-  path: ^1.9.0
+  # File Picker
+  file_picker: ^8.0.0
 
   # Video Player
   video_player: ^2.8.6
 
-  # FFmpeg
-  ffmpeg_kit_flutter_min_gpl: ^6.0.3
+  # Paths
+  path_provider: ^2.1.3
+  path: ^1.9.0
 
-  # MediaPipe / ML
+  # Permissions
+  permission_handler: ^11.3.1
+
+  # FFmpeg Video Processing
+  ffmpeg_kit_flutter_new_video: ^3.0.0
+
+  # AI Segmentation
   google_mlkit_selfie_segmentation: ^0.9.0
 
-  # UI
+  # UI Fonts
   google_fonts: ^6.2.1
+
+  # State Management
+  flutter_riverpod: ^2.5.1
 
   # Animations
   animations: ^2.0.11
