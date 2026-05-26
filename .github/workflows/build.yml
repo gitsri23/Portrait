@@ -1,4 +1,4 @@
-name: Cinematic Camera Production Build
+name: Portrait Blur APK Build
 
 on:
   push:
@@ -9,57 +9,89 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     permissions:
       contents: write
 
     steps:
+      # Checkout
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      # Java
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: zulu
           java-version: 17
 
+      # Flutter
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      # 🚀 1. Fresh Android Base Creation with cinematic_camera name
-      - name: Recreate Android Project Core
+      # Clean old android folder
+      - name: Recreate Android Project
         run: |
           rm -rf android
-          flutter create . --project-name cinematic_camera --org com.example --platforms=android
+          flutter create . --project-name portrait_blur --org com.example --platforms=android
 
-      # 🛠️ 2. Correct Android Manifest Injection with Portrait Label
-      - name: Inject AndroidManifest.xml
+      # Inject Manifest
+      - name: Configure Android Manifest
         run: |
           cat << 'EOF' > android/app/src/main/AndroidManifest.xml
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.cinematic_camera">
-              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
-              <application android:label="Portrait" android:name="${applicationName}" android:icon="@mipmap/ic_launcher" android:requestLegacyExternalStorage="true">
-                  <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop" android:theme="@style/LaunchTheme" android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" android:hardwareAccelerated="true" android:windowSoftInputMode="adjustResize">
-                      <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="com.example.portrait_blur">
+
+              <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+                  android:maxSdkVersion="29"/>
+
+              <application
+                  android:label="Portrait Blur"
+                  android:name="${applicationName}"
+                  android:icon="@mipmap/ic_launcher"
+                  android:requestLegacyExternalStorage="true">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTop"
+                      android:theme="@style/LaunchTheme"
+                      android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+                      android:hardwareAccelerated="true"
+                      android:windowSoftInputMode="adjustResize">
+
+                      <meta-data
+                          android:name="io.flutter.embedding.android.NormalTheme"
+                          android:resource="@style/NormalTheme" />
+
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN"/>
                           <category android:name="android.intent.category.LAUNCHER"/>
                       </intent-filter>
+
                   </activity>
-                  <meta-data android:name="flutterEmbedding" android:value="2" />
+
+                  <meta-data
+                      android:name="flutterEmbedding"
+                      android:value="2" />
+
               </application>
+
           </manifest>
           EOF
 
-      # 🧠 3. Correct MainActivity.kt Injection
-      - name: Inject Custom Native Kotlin Code
+      # MainActivity
+      - name: Inject MainActivity
         run: |
-          mkdir -p android/app/src/main/kotlin/com/example/cinematic_camera
-          cat << 'EOF' > android/app/src/main/kotlin/com/example/cinematic_camera/MainActivity.kt
-          package com.example.cinematic_camera
+          mkdir -p android/app/src/main/kotlin/com/example/portrait_blur
+
+          cat << 'EOF' > android/app/src/main/kotlin/com/example/portrait_blur/MainActivity.kt
+          package com.example.portrait_blur
 
           import io.flutter.embedding.android.FlutterActivity
 
@@ -67,19 +99,24 @@ jobs:
           }
           EOF
 
-      - name: Fetch Dependencies
+      # Clean
+      - name: Flutter Clean
+        run: flutter clean
+
+      # Get packages
+      - name: Install Dependencies
         run: flutter pub get
 
-      # 🚀 4. Compile Release APK
-      - name: Compile Release APK
-        run: flutter build apk --release --no-tree-shake-icons
+      # Build APK
+      - name: Build Release APK
+        run: flutter build apk --release
 
-      # 📦 5. Upload to GitHub Releases
-      - name: Create Production GitHub Release
+      # Upload APK
+      - name: Upload APK Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.0
-          name: Portrait Camera Release v1.0.0
+          name: Portrait Blur Release v1.0.0
           draft: false
           prerelease: false
           files: |
