@@ -84,7 +84,7 @@ jobs:
           </manifest>
           EOF
 
-      # 🎥 4. CameraX & ML Kit డిపెండెన్సీలను build.gradle.kts కి యాడ్ చేయడం
+      # 🎥 4. CameraX & ML Kit డిపెండెన్సీలను యాడ్ చేయడం
       - name: Inject CameraX & ML Kit Dependencies
         run: |
           cat << 'EOF' >> android/app/build.gradle.kts
@@ -97,12 +97,12 @@ jobs:
               implementation("androidx.camera:camera-view:$cameraxVersion")
               implementation("androidx.camera:camera-video:$cameraxVersion")
               
-              // Google ML Kit for Portrait Blur (Selfie Segmentation)
+              // Google ML Kit for Portrait Blur
               implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta4")
           }
           EOF
 
-      # 🧠 5. నేటివ్ Kotlin కెమెరా కోడ్ (MainActivity.kt) - ML Kit తో సహా
+      # 🧠 5. నేటివ్ Kotlin కెమెరా కోడ్ (MainActivity.kt) - CRASH PROOF VERSION
       - name: Inject Custom Native Kotlin Code
         run: |
           mkdir -p android/app/src/main/kotlin/com/example/cinematic_camera
@@ -142,24 +142,21 @@ jobs:
               
               private var videoCapture: VideoCapture<Recorder>? = null
               private var recording: Recording? = null
-              private lateinit var segmenter: Segmenter
+              private var segmenter: Segmenter? = null // క్రాష్ అవ్వకుండా Lazy గా లోడ్ చేస్తాం
 
               override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
                   super.configureFlutterEngine(flutterEngine)
                   cameraExecutor = Executors.newSingleThreadExecutor()
 
-                  // ML Kit Segmenter Initialization
-                  val options = SelfieSegmenterOptions.Builder()
-                      .setDetectorMode(SelfieSegmenterOptions.STREAM_MODE)
-                      .enableRawSizeMask()
-                      .build()
-                  segmenter = Segmentation.getClient(options)
-
                   MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
                       when (call.method) {
                           "initCamera" -> {
-                              textureEntry = flutterEngine.renderer.createSurfaceTexture()
-                              startCamera(result)
+                              try {
+                                  textureEntry = flutterEngine.renderer.createSurfaceTexture()
+                                  startCamera(result)
+                              } catch (e: Exception) {
+                                  result.error("INIT_FAIL", e.message, null)
+                              }
                           }
                           "startRecording" -> {
                               startVideoRecording()
@@ -170,11 +167,7 @@ jobs:
                               recording = null
                               result.success(null)
                           }
-                          "setMode" -> {
-                              val mode = call.argument<String>("mode") ?: "PORTRAIT"
-                              // mode ని బట్టి బ్లర్ ఆన్/ఆఫ్ చేయొచ్చు భవిష్యత్తులో
-                              result.success(null)
-                          }
+                          "setMode" -> result.success(null)
                           "switchCamera" -> {
                               lensFacing = if (CameraSelector.LENS_FACING_FRONT == lensFacing) CameraSelector.LENS_FACING_BACK else CameraSelector.LENS_FACING_FRONT
                               startCamera(null) 
@@ -189,55 +182,66 @@ jobs:
               private fun startCamera(result: MethodChannel.Result?) {
                   val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
                   cameraProviderFuture.addListener({
-                      cameraProvider = cameraProviderFuture.get()
+                      try {
+                          cameraProvider = cameraProviderFuture.get()
 
-                      val preview = Preview.Builder().setTargetResolution(Size(1080, 1920)).build()
-                      
-                      val recorder = Recorder.Builder()
-                          .setQualitySelector(QualitySelector.from(Quality.HIGHEST))
-                          .build()
-                      videoCapture = VideoCapture.withOutput(recorder)
+                          // Safe ML Kit Initialization
+                          if (segmenter == null) {
+                              val options = SelfieSegmenterOptions.Builder()
+                                  .setDetectorMode(SelfieSegmenterOptions.STREAM_MODE)
+                                  .enableRawSizeMask()
+                                  .build()
+                              segmenter = Segmentation.getClient(options)
+                          }
 
-                      // ImageAnalysis for ML Kit
-                      val imageAnalyzer = ImageAnalysis.Builder()
-                          .setTargetResolution(Size(1080, 1920))
-                          .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                          .build()
-                          .also {
-                              it.setAnalyzer(cameraExecutor) { imageProxy ->
-                                  val mediaImage = imageProxy.image
-                                  if (mediaImage != null) {
-                                      val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-                                      segmenter.process(image)
-                                          .addOnSuccessListener { segmentationMask ->
-                                              // ఇక్కడ మనకు Mask వస్తుంది! దీన్ని OpenGL కి పంపి బ్లర్ చేయాలి.
-                                              imageProxy.close()
-                                          }
-                                          .addOnFailureListener {
-                                              imageProxy.close()
-                                          }
-                                  } else {
-                                      imageProxy.close()
+                          val preview = Preview.Builder().setTargetResolution(Size(1080, 1920)).build()
+                          
+                          val recorder = Recorder.Builder()
+                              .setQualitySelector(QualitySelector.from(Quality.HIGHEST))
+                              .build()
+                          videoCapture = VideoCapture.withOutput(recorder)
+
+                          val imageAnalyzer = ImageAnalysis.Builder()
+                              .setTargetResolution(Size(1080, 1920))
+                              .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                              .build()
+                              .also {
+                                  it.setAnalyzer(cameraExecutor) { imageProxy ->
+                                      val mediaImage = imageProxy.image
+                                      if (mediaImage != null && segmenter != null) {
+                                          val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+                                          segmenter?.process(image)
+                                              ?.addOnSuccessListener { imageProxy.close() }
+                                              ?.addOnFailureListener { imageProxy.close() }
+                                      } else {
+                                          imageProxy.close()
+                                      }
                                   }
+                              }
+
+                          textureEntry?.surfaceTexture()?.apply {
+                              setDefaultBufferSize(1080, 1920)
+                              val surface = Surface(this)
+                              preview.setSurfaceProvider { request ->
+                                  request.provideSurface(surface, cameraExecutor) {}
                               }
                           }
 
-                      textureEntry?.surfaceTexture()?.apply {
-                          setDefaultBufferSize(1080, 1920)
-                          val surface = Surface(this)
-                          preview.setSurfaceProvider { request ->
-                              request.provideSurface(surface, cameraExecutor) {}
-                          }
-                      }
-
-                      val cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
-
-                      try {
+                          val cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
                           cameraProvider?.unbindAll()
-                          cameraProvider?.bindToLifecycle(this as LifecycleOwner, cameraSelector, preview, videoCapture, imageAnalyzer)
+
+                          // హార్డ్‌వేర్ క్రాష్ అవ్వకుండా Fallback లాజిక్
+                          try {
+                              cameraProvider?.bindToLifecycle(this as LifecycleOwner, cameraSelector, preview, videoCapture, imageAnalyzer)
+                          } catch (e: IllegalArgumentException) {
+                              // ఒకవేళ ఫోన్ 3 పనులని ఒకేసారి తట్టుకోలేకపోతే, ML Kit ని డ్రాప్ చేసి కనీసం కెమెరా రన్ అయ్యేలా చేస్తుంది.
+                              cameraProvider?.unbindAll()
+                              cameraProvider?.bindToLifecycle(this as LifecycleOwner, cameraSelector, preview, videoCapture)
+                          }
+
                           result?.success(textureEntry?.id())
                       } catch (exc: Exception) {
-                          result?.error("CAMERA_ERROR", "Hardware bind failed", exc.localizedMessage)
+                          result?.error("CAMERA_ERROR", exc.localizedMessage, null)
                       }
                   }, ContextCompat.getMainExecutor(this))
               }
@@ -260,9 +264,7 @@ jobs:
                       .withAudioEnabled()
                       .start(ContextCompat.getMainExecutor(this)) { recordEvent ->
                           if (recordEvent is VideoRecordEvent.Finalize) {
-                              if (!recordEvent.hasError()) {
-                                  // Video saved successfully
-                              } else {
+                              if (recordEvent.hasError()) {
                                   recording?.close()
                                   recording = null
                               }
@@ -273,7 +275,7 @@ jobs:
               override fun onDestroy() {
                   super.onDestroy()
                   cameraExecutor.shutdown()
-                  segmenter.close()
+                  segmenter?.close()
               }
           }
           EOF
@@ -281,9 +283,9 @@ jobs:
       - name: Fetch and Verify Assets
         run: flutter pub get
 
-      # 🚀 6. ప్రొడక్షన్ రిలీజ్ APK కంపైలేషన్
-      - name: Compile Obfuscated Release APK
-        run: flutter build apk --release --obfuscate --split-debug-info=build/app/outputs/symbols --no-tree-shake-icons
+      # 🚀 6. ప్రొడక్షన్ రిలీజ్ APK కంపైలేషన్ (FIXED: Removed --obfuscate to prevent native JNI crashes)
+      - name: Compile Release APK (Safe Mode)
+        run: flutter build apk --release --no-tree-shake-icons
 
       # 📦 7. GitHub Releases లోకి అప్‌లోడ్
       - name: Create Production GitHub Release
