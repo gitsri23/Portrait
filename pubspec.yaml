@@ -1,5 +1,5 @@
 name: cinematic_camera
-description: "A premium minimal cinematic portrait camera app."
+description: "Premium Minimal Cinematic Portrait Video Editor."
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -11,6 +11,8 @@ dependencies:
     sdk: flutter
   google_fonts: ^6.1.0
   permission_handler: ^11.3.1
+  image_picker: ^1.0.7
+  video_player: ^2.8.2
 
 dev_dependencies:
   flutter_test:
