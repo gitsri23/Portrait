@@ -1,9 +1,10 @@
-name: Portrait Blur APK Build
+name: Portrait Blur Production Build
 
 on:
   push:
     branches:
       - main
+
   workflow_dispatch:
 
 jobs:
@@ -14,32 +15,33 @@ jobs:
       contents: write
 
     steps:
-      # Checkout
+
+      # ✅ Checkout
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Java
+      # ✅ Java 17
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: zulu
           java-version: 17
 
-      # Flutter
+      # ✅ Flutter
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      # Clean old android folder
+      # ✅ Recreate Android
       - name: Recreate Android Project
         run: |
           rm -rf android
           flutter create . --project-name portrait_blur --org com.example --platforms=android
 
-      # Inject Manifest
-      - name: Configure Android Manifest
+      # ✅ Android Manifest
+      - name: Inject AndroidManifest
         run: |
           cat << 'EOF' > android/app/src/main/AndroidManifest.xml
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -85,7 +87,7 @@ jobs:
           </manifest>
           EOF
 
-      # MainActivity
+      # ✅ MainActivity
       - name: Inject MainActivity
         run: |
           mkdir -p android/app/src/main/kotlin/com/example/portrait_blur
@@ -99,20 +101,26 @@ jobs:
           }
           EOF
 
-      # Clean
+      # ✅ SDK FIX
+      - name: Fix Android SDK Versions
+        run: |
+          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/g' android/app/build.gradle.kts
+          sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 36/g' android/app/build.gradle.kts
+
+      # ✅ Clean
       - name: Flutter Clean
         run: flutter clean
 
-      # Get packages
-      - name: Install Dependencies
+      # ✅ Dependencies
+      - name: Fetch Dependencies
         run: flutter pub get
 
-      # Build APK
+      # ✅ Build APK
       - name: Build Release APK
-        run: flutter build apk --release
+        run: flutter build apk --release --no-tree-shake-icons
 
-      # Upload APK
-      - name: Upload APK Release
+      # ✅ Upload APK
+      - name: Upload Release APK
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.0
@@ -121,5 +129,6 @@ jobs:
           prerelease: false
           files: |
             build/app/outputs/flutter-apk/app-release.apk
+
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
