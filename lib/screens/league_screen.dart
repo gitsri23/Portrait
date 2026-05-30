@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'game_screen.dart'; 
+
+import 'game_screen.dart'; // కచ్చితంగా ఈ ఫైల్ ఇంపోర్ట్ అయ్యుండాలి
 import '../game_data.dart';
 
 class League {
@@ -33,8 +34,8 @@ class _LeagueScreenState extends State<LeagueScreen> {
   final leagues = const [
     League(name: "GULLY", subtitle: "Street Cricket", balls: 6, wickets: 1, reward: 1.0, stars: 1),
     League(name: "CLUB", subtitle: "Club Match", balls: 12, wickets: 3, reward: 1.2, stars: 2),
-    League(name: "T20", subtitle: "League Cricket", balls: 20, wickets: 5, reward: 1.5, stars: 3),
-    League(name: "IPL", subtitle: "Premier League", balls: 24, wickets: 7, reward: 1.8, stars: 4),
+    League(name: "W20", subtitle: "League Cricket", balls: 20, wickets: 5, reward: 1.5, stars: 3),
+    League(name: "NPL", subtitle: "Premier League", balls: 24, wickets: 7, reward: 1.8, stars: 4),
     League(name: "WORLD CUP", subtitle: "Championship", balls: 30, wickets: 10, reward: 2.0, stars: 5),
   ];
 
@@ -64,7 +65,6 @@ class _LeagueScreenState extends State<LeagueScreen> {
       ),
     );
 
-    // మ్యాచ్ స్టార్ట్ అవుతుంది. గేమ్ ఆడి రాగానే కింద ఉన్న setState రన్ అవుతుంది
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -76,7 +76,6 @@ class _LeagueScreenState extends State<LeagueScreen> {
       ),
     );
     
-    // స్కోర్ అప్‌డేట్ అవ్వడానికి రిఫ్రెష్
     setState(() {}); 
   }
 
@@ -156,13 +155,10 @@ class _LeagueScreenState extends State<LeagueScreen> {
                     const SizedBox(height: 18),
                     const Text("BEST SCORE", style: TextStyle(color: Color(0xFF306230), fontSize: 10)),
                     const SizedBox(height: 10),
-                    
-                    // రియల్ బెస్ట్ స్కోర్ చూపిస్తున్నాం
                     Text(
                       "${GameData.getBestScore(lg.name)}",
                       style: const TextStyle(color: Color(0xFF0F380F), fontSize: 22, fontWeight: FontWeight.bold),
                     ),
-                    
                     const Spacer(),
                     const Text("◄ ► CHANGE", style: TextStyle(color: Color(0xFF306230), fontSize: 10)),
                     const SizedBox(height: 6),
