@@ -9,7 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 // ---------------------------------------------------------
-// 8-Bit సౌండ్ ఇంజిన్ (Glitch లేని క్లీన్ సౌండ్స్)
+// 8-Bit సౌండ్ ఇంజిన్
 // ---------------------------------------------------------
 class Sfx {
   static final List<AudioPlayer> _players = List.generate(5, (_) => AudioPlayer());
@@ -65,7 +65,6 @@ class Sfx {
   static void miss() => tone(180, 0.18, 'sawtooth', 0.18);
   static void over() { final freqs = [330.0, 280.0, 220.0]; for (int i = 0; i < freqs.length; i++) { Future.delayed(Duration(milliseconds: i * 120), () => tone(freqs[i], 0.3, 'square', 0.15)); } }
   
-  // గ్లిచ్ లేకుండా క్లీన్ గా ఉండే ఆర్కేడ్ చీరప్ (Cheer) సౌండ్
   static void cheer() {
     final freqs = [440.0, 554.0, 659.0, 880.0, 1108.0, 1318.0];
     for (int i = 0; i < freqs.length; i++) {
@@ -75,10 +74,25 @@ class Sfx {
 }
 
 // ---------------------------------------------------------
-// గేమ్ స్టేట్స్ & కోర్ క్రికెట్ లాజిక్
+// బాల్ రకాలు & గేమ్ స్టేట్స్
 // ---------------------------------------------------------
+class BallType {
+  final String id, label; final List<double> br; final double sm, p;
+  BallType(this.id, this.label, this.br, this.sm, this.p);
+}
+
+final List<BallType> BTYPES = [
+  BallType('normal', '', [70, 84], 1.0, 0.50),
+  BallType('short', 'SHORT!', [50, 66], 0.9, 0.20),
+  BallType('full', 'FULL', [90, 106], 1.1, 0.20),
+  BallType('yorker', 'YORKER!', [114, 124], 1.3, 0.10),
+];
+
 enum GameState { BOWLING, FIELDING, RESULT }
 
+// ---------------------------------------------------------
+// కోర్ గేమ్ క్లాస్
+// ---------------------------------------------------------
 class CricketGame extends FlameGame with TapCallbacks {
   final Random rng = Random();
 
@@ -104,7 +118,15 @@ class CricketGame extends FlameGame with TapCallbacks {
   double rTimer = 0;
   double bowlT = 1.0;
 
-  // రియల్ ఫీల్డింగ్ & క్యాచ్ లాజిక్ కోసం
+  String bLabelText = '';
+  double bLabelTimer = 0;
+
+  // --- SHOT METER VARIABLES ---
+  double timingProgress = -1.0; 
+  String timingLabel = '';
+  double timingTimer = 0.0;
+
+  // రియల్ ఫీల్డింగ్ క్యాచ్ లాజిక్ కోసం
   Vector2 fieldBallPos = Vector2.zero();
   Vector2 fieldBallVel = Vector2.zero();
   List<Vector2> fielders = [];
@@ -112,8 +134,8 @@ class CricketGame extends FlameGame with TapCallbacks {
   bool ballThrownToCenter = false;
   double throwDelay = 0.0;
   
-  bool isAerial = false; // గాల్లో కొట్టాడా లేదా?
-  double aerialLandingDistance = 0.0; // బంతి ఎక్కడ పడుతుంది?
+  bool isAerial = false; 
+  double aerialLandingDistance = 0.0; 
 
   // మ్యాన్యువల్ రన్నింగ్
   int currentRuns = 0;
@@ -132,6 +154,12 @@ class CricketGame extends FlameGame with TapCallbacks {
     Sfx.start();
   }
 
+  BallType pickBType() {
+    double r = rng.nextDouble(), c = 0;
+    for (var bt in BTYPES) { c += bt.p; if (r < c) return bt; }
+    return BTYPES[0];
+  }
+
   void startBowl() {
     if (ball.isActive || bowler.phase != 'idle') return;
     bowler.phase = 'runup'; bowler.frame = 0;
@@ -139,22 +167,24 @@ class CricketGame extends FlameGame with TapCallbacks {
   }
 
   void releaseBall() {
+    BallType bt = pickBType();
     ball.x = 60 + (rng.nextDouble() * 6 - 3);
     ball.y = 35; 
     ball.vy = 40.0 + rng.nextDouble() * 30.0; 
     ball.isActive = true; ball.bounced = false;
-    ball.bounceAt = 70 + rng.nextDouble() * 30;
+    ball.bounceAt = bt.br[0] + rng.nextDouble() * (bt.br[1] - bt.br[0]);
+    
+    if (bt.label.isNotEmpty) { bLabelText = bt.label; bLabelTimer = 0.8; }
     bowler.phase = 'deliver'; bowler.frame = 0;
   }
 
-  // 3 రకాల క్రికెట్ ఫీల్డింగ్ సెటప్స్ (9 మంది ఫీల్డర్స్)
   List<Vector2> getFieldSetting() {
     int type = rng.nextInt(3);
-    if(type == 0) { // Defensive (బౌండరీ దగ్గర ఎక్కువ మంది)
+    if(type == 0) { 
        return [Vector2(60, 15), Vector2(30, 25), Vector2(90, 25), Vector2(15, 60), Vector2(105, 60), Vector2(30, 95), Vector2(90, 95), Vector2(45, 45), Vector2(75, 45)];
-    } else if(type == 1) { // Attacking (సర్కిల్ లోపల)
+    } else if(type == 1) { 
        return [Vector2(50, 45), Vector2(70, 45), Vector2(40, 60), Vector2(80, 60), Vector2(45, 75), Vector2(75, 75), Vector2(60, 20), Vector2(20, 30), Vector2(100, 30)];
-    } else { // Normal (బ్యాలెన్స్డ్)
+    } else { 
        return [Vector2(60, 25), Vector2(35, 35), Vector2(85, 35), Vector2(25, 60), Vector2(95, 60), Vector2(40, 85), Vector2(80, 85), Vector2(20, 20), Vector2(100, 20)];
     }
   }
@@ -163,19 +193,53 @@ class CricketGame extends FlameGame with TapCallbacks {
     if (state != GameState.BOWLING || !ball.isActive || batsman.swing) return;
     batsman.swing = true; batsman.swingTimer = 0.20;
 
-    double distanceToStumps = (120 - ball.y).abs();
+    double by = ball.y;
+    double distanceToStumps = (120 - by).abs();
 
-    if (distanceToStumps <= 18) { // హిట్ అయింది
-      ball.isActive = false; balls++;
-      Sfx.hit(); HapticFeedback.mediumImpact();
+    // --- SHOT METER CALCULATION ---
+    // Y-axis 90 to 150 range. Perfect is at 120. (60px total window)
+    timingProgress = ((by - 90) / 60).clamp(0.0, 1.0);
+    timingTimer = 1.5; // మీటర్ 1.5 సెకన్లు కనిపిస్తుంది
+
+    if (distanceToStumps <= 5) { 
+      // 1. PERFECT (SIX)
+      timingLabel = 'PERFECT!';
+      ball.isActive = false; balls++; score += 6; scoreNotifier.value = score;
+      sixes++; combo++; if (combo > maxCombo) maxCombo = combo;
+      rMsg = 'SIX!'; 
+      Sfx.hit(); Sfx.six(); Sfx.cheer(); 
+      HapticFeedback.heavyImpact(); 
+      endBall(2.0);
+    } 
+    else if (distanceToStumps <= 12) { 
+      // 2. GOOD (FOUR)
+      timingLabel = by < 120 ? 'EARLY' : 'LATE'; 
+      if (distanceToStumps <= 8) timingLabel = 'GOOD!'; // Close to perfect
       
-      // ఎంత పర్ఫెక్ట్‌గా టైమింగ్ చేసాడనే దాన్ని బట్టి పవర్ వస్తుంది
-      double power = 1.0 - (distanceToStumps / 18); // 0.0 to 1.0
-      setupFielding(power);
-    } else { // మిస్ అయింది
-      if (ball.y < 120) {
+      ball.isActive = false; balls++; score += 4; scoreNotifier.value = score;
+      fours++; combo++; if (combo > maxCombo) maxCombo = combo;
+      rMsg = 'FOUR!'; 
+      Sfx.hit(); Sfx.four(); Sfx.cheer(); 
+      HapticFeedback.mediumImpact(); 
+      endBall(2.0);
+    } 
+    else if (distanceToStumps <= 25) { 
+      // 3. OKAY (FIELDING)
+      timingLabel = by < 120 ? 'EARLY' : 'LATE';
+      
+      ball.isActive = false; balls++;
+      combo++; if (combo > maxCombo) maxCombo = combo;
+      Sfx.hit(); HapticFeedback.lightImpact();
+      setupFielding(1.0 - (distanceToStumps / 25));
+    } 
+    else { 
+      // 4. MISS
+      if (by < 120) {
+        timingLabel = 'TOO EARLY';
         ball.isActive = false; balls++; combo = 0; 
         rMsg = 'Missed'; Sfx.miss(); endBall(1.0);
+      } else {
+        timingLabel = 'TOO LATE';
       }
     }
   }
@@ -185,21 +249,15 @@ class CricketGame extends FlameGame with TapCallbacks {
     currentRuns = 0; runProgress = 0.0; isBatsmanRunning = false; runDirection = 1.0;
     fielderHasBall = false; ballThrownToCenter = false;
 
-    fieldBallPos = Vector2(60, 60); // పిచ్ సెంటర్ నుండి స్టార్ట్
+    fieldBallPos = Vector2(60, 60); 
     
-    // బంతి వెళ్లే డైరెక్షన్ మరియు వేగం
     double angle = (rng.nextDouble() * pi * 1.5) - (pi * 0.75); 
     double speed = 30.0 + (power * 70.0); 
     fieldBallVel = Vector2(sin(angle) * speed, -cos(angle) * speed);
 
-    // పవర్ > 0.6 ఉంటే గాల్లోకి వెళ్లే (Aerial/Catch) అవకాశం ఉంది
     isAerial = power > 0.6 && rng.nextBool(); 
-    if (power > 0.92) isAerial = true; // పర్ఫెక్ట్ టైమింగ్ పక్కా సిక్స్ (గాల్లోకి)
-    
-    // బంతి గాల్లో ఉంటే ఎక్కడ బౌన్స్ అవుతుందో క్యాలిక్యులేట్ చేయడం
     aerialLandingDistance = isAerial ? (25.0 + power * 45.0) : 0.0; 
 
-    // ఫీల్డర్లను ప్లేస్ చేయడం
     fielders = getFieldSetting();
   }
 
@@ -212,6 +270,8 @@ class CricketGame extends FlameGame with TapCallbacks {
     super.update(dt);
     if (gameOverNotifier.value) return;
 
+    // Shot Meter Timer 
+    if (timingTimer > 0) timingTimer -= dt;
     if (bLabelTimer > 0) bLabelTimer -= dt;
 
     if (state == GameState.BOWLING) {
@@ -245,9 +305,6 @@ class CricketGame extends FlameGame with TapCallbacks {
         batsman.swingTimer -= dt; if (batsman.swingTimer <= 0) batsman.swing = false;
       }
     } 
-    // ---------------------------------------
-    // రియల్ ఫీల్డింగ్ & క్యాచ్ ఔట్ లాజిక్
-    // ---------------------------------------
     else if (state == GameState.FIELDING) {
       Vector2 center = Vector2(60, 60);
 
@@ -255,13 +312,10 @@ class CricketGame extends FlameGame with TapCallbacks {
         fieldBallPos += fieldBallVel * dt;
         double distTraveled = fieldBallPos.distanceTo(center);
 
-        // 1. బంతి బౌన్స్ అవ్వడం (గాల్లోంచి కిందపడటం)
         if (isAerial && distTraveled >= aerialLandingDistance) {
-          isAerial = false; // ఇక క్యాచ్ ఔట్ అవ్వదు
-          Sfx.bounce();
+          isAerial = false; Sfx.bounce();
         }
 
-        // 2. బౌండరీ లైన్ చెక్
         if (distTraveled >= 48) {
           if (isAerial) {
             score += 6; scoreNotifier.value = score; sixes++;
@@ -275,22 +329,17 @@ class CricketGame extends FlameGame with TapCallbacks {
           endBall(2.0); return; 
         }
 
-        // 3. ఫీల్డర్స్ క్యాచ్ పట్టడం / బంతి ఆపడం
         for (var f in fielders) {
           if (f.distanceTo(fieldBallPos) < 4) {
             if (isAerial) {
-              // గాల్లో ఉన్నప్పుడు పట్టుకున్నాడు -> CATCH OUT!
               wickets++; wicketNotifier.value = wickets; combo = 0;
               rMsg = 'Catch Out!'; Sfx.outWicket(); HapticFeedback.heavyImpact();
               endBall(2.0); return;
             } else {
-              // కింద పడ్డాక పట్టుకున్నాడు -> బంతి ఆగాక విసురుతాడు
               fielderHasBall = true; throwDelay = 0.4; 
-              fieldBallVel = Vector2.zero();
-              break;
+              fieldBallVel = Vector2.zero(); break;
             }
           } else {
-            // ఫీల్డర్స్ బంతి వైపు పరిగెత్తడం
             f += (fieldBallPos - f).normalized() * 40 * dt; 
           }
         }
@@ -299,7 +348,6 @@ class CricketGame extends FlameGame with TapCallbacks {
         throwDelay -= dt;
         if (throwDelay <= 0) { fielderHasBall = false; ballThrownToCenter = true; }
       } 
-      // కీపర్‌కి విసరడం
       else if (ballThrownToCenter) {
         fieldBallPos += (center - fieldBallPos).normalized() * 80 * dt;
         if (fieldBallPos.distanceTo(center) < 3) {
@@ -314,7 +362,6 @@ class CricketGame extends FlameGame with TapCallbacks {
         }
       }
 
-      // మ్యాన్యువల్ రన్నింగ్
       if (isBatsmanRunning) {
         runProgress += runDirection * 1.2 * dt; 
         if (runProgress >= 1.0) {
@@ -360,7 +407,6 @@ class CricketGame extends FlameGame with TapCallbacks {
     final pDarkStroke = Paint()..color = const Color(0xFF0F380F)..style = PaintingStyle.stroke..strokeWidth = 1;
 
     if (state == GameState.BOWLING || state == GameState.RESULT) {
-      // Perspective Pitch
       canvas.drawLine(const Offset(45, 30), const Offset(20, 130), pDarkStroke);
       canvas.drawLine(const Offset(75, 30), const Offset(100, 130), pDarkStroke);
       canvas.drawLine(const Offset(47, 35), const Offset(73, 35), pDarkStroke);
@@ -369,23 +415,41 @@ class CricketGame extends FlameGame with TapCallbacks {
       Path pitchPath = Path()..moveTo(45, 30)..lineTo(75, 30)..lineTo(100, 130)..lineTo(20, 130)..close();
       canvas.drawPath(pitchPath, Paint()..color = const Color(0x110F380F));
 
+      final textP = TextPaint(style: const TextStyle(fontFamily: 'NokiaPixel', color: Color(0xFF0F380F), fontSize: 6, fontWeight: FontWeight.bold));
+      if (bLabelTimer > 0) textP.render(canvas, bLabelText, Vector2(60, 50), anchor: Anchor.center);
+
     } else if (state == GameState.FIELDING) {
-      // Top-Down Radar View
       canvas.drawCircle(const Offset(60, 60), 48, Paint()..color = const Color(0xFF306230)..style = PaintingStyle.stroke..strokeWidth = 1);
       canvas.drawCircle(const Offset(60, 60), 25, Paint()..color = const Color(0xFF306230)..style = PaintingStyle.stroke..strokeWidth = 1);
       canvas.drawRect(const Rect.fromLTWH(56, 52, 8, 16), pLight);
       
-      // ఫీల్డర్స్ & బాల్ 
-      for (var f in fielders) {
-        canvas.drawRect(Rect.fromCenter(center: Offset(f.x, f.y), width: 3, height: 3), pDark);
-      }
-      // గుండ్రటి బంతి (Round ball)
+      for (var f in fielders) canvas.drawRect(Rect.fromCenter(center: Offset(f.x, f.y), width: 3, height: 3), pDark);
       canvas.drawCircle(Offset(fieldBallPos.x, fieldBallPos.y), 1.5, pDark);
 
-      // Running HUD
       canvas.drawRect(const Rect.fromLTWH(105, 40, 8, 40), Paint()..color=const Color(0xFF306230)..style=PaintingStyle.stroke);
       double runnerY = 77 - (runProgress * 34);
       canvas.drawRect(Rect.fromLTWH(106, runnerY, 6, 4), pDark); 
+    }
+
+    // --- SHOT METER UI ---
+    if (timingTimer > 0) {
+      double mx = 5; double my = 35; double mw = 6; double mh = 60;
+      
+      // అవుట్ లైన్ (Background)
+      canvas.drawRect(Rect.fromLTWH(mx, my, mw, mh), Paint()..color = const Color(0xFF306230)..style = PaintingStyle.stroke);
+      
+      // పర్ఫెక్ట్ జోన్ (Middle)
+      double perfectY = my + (mh * 0.4);
+      double perfectH = mh * 0.2;
+      canvas.drawRect(Rect.fromLTWH(mx, perfectY, mw, perfectH), pDark);
+
+      // ప్లేయర్ ట్యాప్ చేసిన పాయింట్ (Indicator)
+      double indY = my + (timingProgress * mh);
+      canvas.drawLine(Offset(mx - 2, indY), Offset(mx + mw + 2, indY), Paint()..color = const Color(0xFF0F380F)..strokeWidth = 2);
+
+      // టెక్స్ట్ లేబుల్ (PERFECT! / EARLY / LATE)
+      final tp = TextPaint(style: const TextStyle(fontFamily: 'NokiaPixel', color: Color(0xFF0F380F), fontSize: 8, fontWeight: FontWeight.bold));
+      tp.render(canvas, timingLabel, Vector2(mx + 12, indY - 4));
     }
 
     if (state == GameState.RESULT) {
@@ -400,7 +464,7 @@ class CricketGame extends FlameGame with TapCallbacks {
 }
 
 // ---------------------------------------------------------
-// నోకియా స్టిక్ ఫిగర్స్ (క్లియర్ గా తెలిసేలా డిజైన్)
+// నోకియా విజువల్ మోడల్స్ (Round Ball & Stick Figures)
 // ---------------------------------------------------------
 
 class Ball extends Component with HasGameRef<CricketGame> {
@@ -409,7 +473,6 @@ class Ball extends Component with HasGameRef<CricketGame> {
   
   @override void render(Canvas canvas) {
     if (!isActive || gameRef.state != GameState.BOWLING) return;
-    // Round Ball
     canvas.drawCircle(Offset(x, y), 1.5, Paint()..color = const Color(0xFF0F380F));
   }
 }
@@ -422,9 +485,7 @@ class Bowler extends Component with HasGameRef<CricketGame> {
     if (gameRef.state != GameState.BOWLING) return;
     final pLine = Paint()..color = const Color(0xFF0F380F)..strokeWidth = 1.5;
     
-    // తల
     canvas.drawRect(Rect.fromLTWH(x - 1, y - 5, 2, 2), Paint()..color = const Color(0xFF0F380F));
-    // బాడీ (గీత)
     canvas.drawLine(Offset(x, y - 3), Offset(x, y + 1), pLine);
 
     if (phase == 'idle') { 
@@ -440,7 +501,7 @@ class Bowler extends Component with HasGameRef<CricketGame> {
         canvas.drawLine(Offset(x, y + 1), Offset(x + 1, y + 3), pLine); 
       }
     } else if (phase == 'deliver') { 
-      canvas.drawLine(Offset(x, y - 2), Offset(x + 2, y - 3), pLine); // చెయ్యి
+      canvas.drawLine(Offset(x, y - 2), Offset(x + 2, y - 3), pLine); 
       canvas.drawLine(Offset(x, y + 1), Offset(x - 1, y + 3), pLine); 
     }
   }
@@ -455,7 +516,6 @@ class Batsman extends Component with HasGameRef<CricketGame> {
     final pDark = Paint()..color = const Color(0xFF0F380F); 
     final pLine = Paint()..color = const Color(0xFF0F380F)..strokeWidth = 2.0;
 
-    // స్టంప్స్
     if (!stumpBroken) { 
       canvas.drawRect(Rect.fromLTWH(x - 4, y - 5, 1, 6), pDark);
       canvas.drawRect(Rect.fromLTWH(x - 2, y - 5, 1, 6), pDark);
@@ -465,13 +525,11 @@ class Batsman extends Component with HasGameRef<CricketGame> {
       canvas.drawRect(Rect.fromLTWH(x - 2, y, 3, 1), pDark);
     }
 
-    // బ్యాట్స్‌మాన్ స్టిక్ ఫిగర్ (క్లియర్)
-    canvas.drawRect(Rect.fromLTWH(x + 3, y - 8, 2, 2), pDark); // తల
-    canvas.drawLine(Offset(x + 4, y - 6), Offset(x + 4, y - 1), pLine); // బాడీ
-    canvas.drawLine(Offset(x + 4, y - 1), Offset(x + 3, y + 3), pLine); // ఎడమ కాలు
-    canvas.drawLine(Offset(x + 4, y - 1), Offset(x + 5, y + 3), pLine); // కుడి కాలు
+    canvas.drawRect(Rect.fromLTWH(x + 3, y - 8, 2, 2), pDark); 
+    canvas.drawLine(Offset(x + 4, y - 6), Offset(x + 4, y - 1), pLine); 
+    canvas.drawLine(Offset(x + 4, y - 1), Offset(x + 3, y + 3), pLine); 
+    canvas.drawLine(Offset(x + 4, y - 1), Offset(x + 5, y + 3), pLine); 
     
-    // బ్యాట్
     if (swing) { 
       canvas.drawLine(Offset(x + 4, y - 3), Offset(x - 5, y - 2), pLine); 
     } else { 
