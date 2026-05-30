@@ -106,7 +106,6 @@ class _LeagueScreenState extends State<LeagueScreen> {
       ),
     );
 
-    // ఇక్కడ GameScreen కి కావలసిన 3 పరామీటర్లను పంపుతున్నాం
     Navigator.push(
       context,
       MaterialPageRoute(
