@@ -9,7 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 // ---------------------------------------------------------
-// Sound Engine
+// 8-Bit సౌండ్ ఇంజిన్
 // ---------------------------------------------------------
 class Sfx {
   static final List<AudioPlayer> _players = List.generate(5, (_) => AudioPlayer());
@@ -90,7 +90,7 @@ final List<BallType> BTYPES = [
 enum GameState { BOWLING, FIELDING, RESULT }
 
 // ---------------------------------------------------------
-// Core Game Logic (Java 2.5D Style)
+// Core Game Logic
 // ---------------------------------------------------------
 class CricketGame extends FlameGame with TapCallbacks {
   final Random rng = Random();
@@ -120,12 +120,13 @@ class CricketGame extends FlameGame with TapCallbacks {
   String bLabelText = '';
   double bLabelTimer = 0;
 
-  // Shot Meter
-  double timingProgress = -1.0; 
+  // --- ప్రొఫెషనల్ షాట్ మీటర్ (Shot Meter) ---
+  double timingProgress = 0.5; // డిఫాల్ట్ గా మధ్యలో
   String timingLabel = '';
   double timingTimer = 0.0;
+  bool showMeter = false;
 
-  // Fielding 
+  // ఫీల్డింగ్ లాజిక్
   Vector2 fieldBallPos = Vector2.zero();
   Vector2 fieldBallVel = Vector2.zero();
   List<Vector2> fielders = [];
@@ -137,7 +138,7 @@ class CricketGame extends FlameGame with TapCallbacks {
   double aerialLandingDistance = 0.0; 
   double hitStartDistance = 0.0;
 
-  // Running
+  // రన్నింగ్ లాజిక్
   int currentRuns = 0;
   double runProgress = 0.0; 
   bool isBatsmanRunning = false;
@@ -162,6 +163,8 @@ class CricketGame extends FlameGame with TapCallbacks {
   void startBowl() {
     if (ball.isActive || bowler.phase != 'idle') return;
     bowler.phase = 'runup'; bowler.frame = 0;
+    showMeter = true; // బంతి వేయగానే మీటర్ కనిపిస్తుంది
+    timingLabel = '';
     Sfx.bowl();
   }
 
@@ -169,7 +172,7 @@ class CricketGame extends FlameGame with TapCallbacks {
     BallType bt = pickBType();
     ball.x = 60 + (rng.nextDouble() * 6 - 3);
     ball.y = 35; 
-    ball.z = 8.0; // Release height
+    ball.z = 8.0; 
     ball.vy = 40.0 + rng.nextDouble() * 30.0; 
     ball.isActive = true; ball.bounced = false;
     ball.bounceAt = bt.br[0] + rng.nextDouble() * (bt.br[1] - bt.br[0]);
@@ -196,8 +199,9 @@ class CricketGame extends FlameGame with TapCallbacks {
     double by = ball.y;
     double distanceToStumps = (120 - by).abs();
 
+    // మీటర్ ఎక్కడ ఫ్రీజ్ అవ్వాలో కాలిక్యులేట్ చేయడం
     timingProgress = ((by - 90) / 60).clamp(0.0, 1.0);
-    timingTimer = 1.5;
+    timingTimer = 1.0; // 1 సెకను మీటర్ హోల్డ్ అవుతుంది
 
     if (distanceToStumps <= 5) { 
       timingLabel = 'PERFECT!';
@@ -266,6 +270,8 @@ class CricketGame extends FlameGame with TapCallbacks {
     if (gameOverNotifier.value) return;
 
     if (timingTimer > 0) timingTimer -= dt;
+    else showMeter = false; // టైమర్ అయిపోగానే మీటర్ మాయం అవుతుంది
+    
     if (bLabelTimer > 0) bLabelTimer -= dt;
 
     if (state == GameState.BOWLING) {
@@ -278,15 +284,18 @@ class CricketGame extends FlameGame with TapCallbacks {
       }
 
       if (ball.isActive) {
-        // Pseudo Z-Axis logic for bowling
+        // మీటర్ కి బాల్ స్పీడ్ సింక్
+        if(showMeter && timingLabel.isEmpty) {
+           timingProgress = ((ball.y - 90) / 60).clamp(0.0, 1.0);
+        }
+
         if (!ball.bounced) {
           double progress = (ball.y - 35) / (ball.bounceAt - 35);
-          ball.z = 8.0 - (progress * 8.0); // Ball goes down to pitch
+          ball.z = 8.0 - (progress * 8.0); 
           if (ball.y >= ball.bounceAt) {
             ball.vy = ball.vy * 0.7 + 20; ball.bounced = true; ball.z = 0; Sfx.bounce();
           }
         } else {
-          // Bounce up after pitch
           double progress = (ball.y - ball.bounceAt) / (120 - ball.bounceAt);
           ball.z = sin(progress * pi) * 6.0; 
         }
@@ -295,11 +304,13 @@ class CricketGame extends FlameGame with TapCallbacks {
 
         if (ball.y >= 120 && ball.y <= 126 && (ball.x - 60).abs() < 5) {
           ball.isActive = false; wickets++; balls++; combo = 0; 
+          timingLabel = 'MISSED!'; timingTimer = 1.0;
           wicketNotifier.value = wickets; batsman.stumpBroken = true;
           rMsg = 'Bowled!'; Sfx.outWicket(); 
           HapticFeedback.heavyImpact(); endBall(2.0);
         } else if (ball.y > 140) {
           ball.isActive = false; balls++; combo = 0; 
+          timingLabel = 'TOO LATE'; timingTimer = 1.0;
           rMsg = 'Dot'; endBall(1.0);
         }
       }
@@ -315,10 +326,9 @@ class CricketGame extends FlameGame with TapCallbacks {
         fieldBallPos += fieldBallVel * dt;
         hitStartDistance += (fieldBallVel * dt).length;
         
-        // Z-Axis aerial simulation for fielding
         if (isAerial) {
           double p = hitStartDistance / aerialLandingDistance;
-          ball.z = sin(p * pi) * 15.0; // Arc height
+          ball.z = sin(p * pi) * 15.0; 
           if (p >= 1.0) {
             isAerial = false; ball.z = 0; Sfx.bounce();
           }
@@ -353,13 +363,13 @@ class CricketGame extends FlameGame with TapCallbacks {
         }
       } 
       else if (fielderHasBall) {
-        ball.z = 3.0; // Held by fielder
+        ball.z = 3.0; 
         throwDelay -= dt;
         if (throwDelay <= 0) { fielderHasBall = false; ballThrownToCenter = true; }
       } 
       else if (ballThrownToCenter) {
         fieldBallPos += (center - fieldBallPos).normalized() * 80 * dt;
-        ball.z = 4.0; // Thrown ball height
+        ball.z = 4.0; 
         
         if (fieldBallPos.distanceTo(center) < 3) {
           ball.z = 0;
@@ -413,23 +423,18 @@ class CricketGame extends FlameGame with TapCallbacks {
 
   @override
   void render(Canvas canvas) {
-    super.render(canvas);
-
-    // Color Palette for Java 2.5D Style
+    // 1. మొదట బ్యాక్‌గ్రౌండ్ & పిచ్ గీయాలి (కింద ఉండే లేయర్)
     final grassColor = const Color(0xFF4CAF50);
     final pitchColor = const Color(0xFFD7CCC8);
     final linePaint = Paint()..color = Colors.white70..strokeWidth = 1.0..isAntiAlias = true;
     final shadowPaint = Paint()..color = Colors.black26..isAntiAlias = true;
 
-    // Background Grass
     canvas.drawRect(const Rect.fromLTWH(0, 0, 120, 160), Paint()..color = grassColor);
 
     if (state == GameState.BOWLING || state == GameState.RESULT) {
-      // 2.5D Trapezoid Pitch
       Path pitchPath = Path()..moveTo(45, 30)..lineTo(75, 30)..lineTo(100, 130)..lineTo(20, 130)..close();
       canvas.drawPath(pitchPath, Paint()..color = pitchColor..isAntiAlias = true);
 
-      // Creases
       canvas.drawLine(const Offset(47, 35), const Offset(73, 35), linePaint);
       canvas.drawLine(const Offset(25, 120), const Offset(95, 120), linePaint);
       canvas.drawLine(const Offset(20, 126), const Offset(100, 126), linePaint);
@@ -438,53 +443,54 @@ class CricketGame extends FlameGame with TapCallbacks {
       if (bLabelTimer > 0) textP.render(canvas, bLabelText, Vector2(60, 50), anchor: Anchor.center);
 
     } else if (state == GameState.FIELDING) {
-      // 2.5D Radar View
       canvas.drawCircle(const Offset(60, 60), 48, Paint()..color = Colors.white30..style = PaintingStyle.stroke..strokeWidth = 1..isAntiAlias = true);
       canvas.drawCircle(const Offset(60, 60), 25, Paint()..color = Colors.white30..style = PaintingStyle.stroke..strokeWidth = 1..isAntiAlias = true);
       
-      // Pitch in Radar
       canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(56, 52, 8, 16), const Radius.circular(2)), Paint()..color = pitchColor);
 
-      // Fielders in Radar
       for (var f in fielders) {
         canvas.drawOval(Rect.fromCenter(center: Offset(f.x, f.y+1), width: 3, height: 1.5), shadowPaint);
         canvas.drawCircle(Offset(f.x, f.y), 1.5, Paint()..color = Colors.blue..isAntiAlias = true);
       }
 
-      // Ball in Radar with Z-Axis shadow
       canvas.drawOval(Rect.fromCenter(center: Offset(fieldBallPos.x, fieldBallPos.y), width: 3, height: 1.5), shadowPaint);
       canvas.drawCircle(Offset(fieldBallPos.x, fieldBallPos.y - ball.z), 1.5, Paint()..color = Colors.redAccent..isAntiAlias=true);
 
-      // Running UI
       canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(105, 40, 8, 40), const Radius.circular(4)), Paint()..color = Colors.black45);
       double runnerY = 77 - (runProgress * 34);
       canvas.drawCircle(Offset(109, runnerY+1), 2.5, Paint()..color = Colors.yellowAccent..isAntiAlias=true);
     }
 
-    // Shot Meter UI
-    if (timingTimer > 0) {
-      double mx = 4; double my = 35; double mw = 6; double mh = 50;
+    // 2. పిచ్ గీసిన తర్వాత, ప్లేయర్స్ ని గీయాలి (పైన ఉండే లేయర్ - Z Index Fix)
+    super.render(canvas);
+
+    // 3. చివరగా UI ఓవర్లేస్ (షాట్ మీటర్, రిజల్ట్స్) గీయాలి
+    if (showMeter) {
+      double mx = 4; double my = 40; double mw = 6; double mh = 60;
       
-      // Gradient Background
-      final meterBg = Paint()..shader = const LinearGradient(
-        begin: Alignment.topCenter, end: Alignment.bottomCenter,
-        colors: [Colors.red, Colors.yellow, Colors.green, Colors.yellow, Colors.red],
-      ).createShader(Rect.fromLTWH(mx, my, mw, mh));
-      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(mx, my, mw, mh), const Radius.circular(3)), meterBg);
-
-      // Perfect Zone
-      double perfectY = my + (mh * 0.4); double perfectH = mh * 0.2;
-      canvas.drawRect(Rect.fromLTWH(mx, perfectY, mw, perfectH), Paint()..color = Colors.white30);
-
-      // Indicator
+      // మీటర్ సెగ్మెంట్స్: Red->Orange->Green->Cyan->Green->Orange->Red
+      List<Color> mColors = [Colors.red, Colors.orange, Colors.green, Colors.cyan, Colors.green, Colors.orange, Colors.red];
+      List<double> mStops = [0.0, 0.2, 0.4, 0.45, 0.55, 0.6, 0.8, 1.0];
+      
+      for (int i = 0; i < mColors.length; i++) {
+        double startY = my + mStops[i] * mh;
+        double segmentH = (mStops[i+1] - mStops[i]) * mh;
+        canvas.drawRect(Rect.fromLTWH(mx, startY, mw, segmentH), Paint()..color = mColors[i]);
+      }
+      
+      canvas.drawRect(Rect.fromLTWH(mx, my, mw, mh), Paint()..color = Colors.black..style = PaintingStyle.stroke..strokeWidth=1);
+      
       double indY = my + (timingProgress * mh);
-      canvas.drawLine(Offset(mx - 2, indY), Offset(mx + mw + 2, indY), Paint()..color = Colors.white..strokeWidth = 2..isAntiAlias=true);
+      canvas.drawLine(Offset(mx - 3, indY), Offset(mx + mw + 3, indY), Paint()..color = Colors.white..strokeWidth=2);
       
-      final tp = TextPaint(style: const TextStyle(fontFamily: 'Arial', color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black, blurRadius: 2)]));
-      tp.render(canvas, timingLabel, Vector2(mx + 10, indY - 3));
+      if (timingLabel.isNotEmpty) {
+        final tp = TextPaint(style: const TextStyle(fontFamily: 'Arial', color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black, blurRadius: 2)]));
+        // మీటర్ కింద పక్కగా టెక్స్ట్ పెడుతున్నాం, దేనికీ అడ్డు రాకుండా
+        tp.render(canvas, timingLabel, Vector2(mx + 12, indY - 4));
+      }
     }
 
-    // Result Overlay
+    // క్లీన్ రిజల్ట్ పాప్-అప్
     if (state == GameState.RESULT && rMsg.isNotEmpty) {
       canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(25, 60, 70, 20), const Radius.circular(4)), Paint()..color = Colors.black87);
       final rPaint = TextPaint(style: const TextStyle(fontFamily: 'Arial', color: Colors.yellowAccent, fontSize: 12, fontWeight: FontWeight.bold));
@@ -504,9 +510,9 @@ class Ball extends Component with HasGameRef<CricketGame> {
   @override void render(Canvas canvas) {
     if (!isActive || gameRef.state != GameState.BOWLING) return;
     
-    // Shadow
+    // షాడో
     canvas.drawOval(Rect.fromCenter(center: Offset(x, y), width: 4, height: 2), Paint()..color = Colors.black38..isAntiAlias=true);
-    // Ball with height (Z-axis)
+    // బంతి
     canvas.drawCircle(Offset(x, y - z), 2.0, Paint()..color = Colors.redAccent..isAntiAlias=true);
     canvas.drawCircle(Offset(x - 0.5, y - z - 0.5), 0.6, Paint()..color = Colors.white70..isAntiAlias=true);
   }
@@ -519,18 +525,14 @@ class Bowler extends Component with HasGameRef<CricketGame> {
   @override void render(Canvas canvas) {
     if (gameRef.state != GameState.BOWLING) return;
     
-    // Shadow
     canvas.drawOval(Rect.fromCenter(center: Offset(x, y + 2), width: 6, height: 3), Paint()..color = Colors.black26..isAntiAlias=true);
 
     final pJersey = Paint()..color = Colors.blue..strokeWidth = 2.0..strokeCap = StrokeCap.round..isAntiAlias=true;
     final pSkin = Paint()..color = const Color(0xFFFFCC80)..strokeWidth = 1.0..isAntiAlias=true;
     final pPants = Paint()..color = Colors.white..strokeWidth = 1.5..strokeCap = StrokeCap.round..isAntiAlias=true;
 
-    // Head
-    canvas.drawCircle(Offset(x, y - 5), 1.5, pSkin);
-
-    // Torso
-    canvas.drawLine(Offset(x, y - 3), Offset(x, y), pJersey);
+    canvas.drawCircle(Offset(x, y - 5), 1.5, pSkin); // తల
+    canvas.drawLine(Offset(x, y - 3), Offset(x, y), pJersey); // బాడీ
 
     if (phase == 'idle') { 
       canvas.drawLine(Offset(x, y), Offset(x - 1, y + 2), pPants); 
@@ -545,7 +547,7 @@ class Bowler extends Component with HasGameRef<CricketGame> {
         canvas.drawLine(Offset(x, y), Offset(x + 2, y + 2), pPants); 
       }
     } else if (phase == 'deliver') { 
-      canvas.drawLine(Offset(x + 1, y - 2), Offset(x + 3, y - 4), pSkin); // Arm up
+      canvas.drawLine(Offset(x + 1, y - 2), Offset(x + 3, y - 4), pSkin); // చెయ్యి ఎత్తడం
       canvas.drawLine(Offset(x, y), Offset(x - 1, y + 2), pPants); 
     }
   }
@@ -558,7 +560,7 @@ class Batsman extends Component with HasGameRef<CricketGame> {
   @override void render(Canvas canvas) {
     if (gameRef.state != GameState.BOWLING) return;
     
-    // Shadow
+    // బ్యాట్స్‌మాన్ షాడో
     canvas.drawOval(Rect.fromCenter(center: Offset(x + 3, y + 4), width: 10, height: 4), Paint()..color = Colors.black26..isAntiAlias=true);
 
     final pJersey = Paint()..color = Colors.blue..strokeWidth = 3.0..strokeCap = StrokeCap.round..isAntiAlias=true;
@@ -567,7 +569,7 @@ class Batsman extends Component with HasGameRef<CricketGame> {
     final pBat = Paint()..color = const Color(0xFF8D6E63)..strokeWidth = 2.0..strokeCap = StrokeCap.round..isAntiAlias=true;
     final pStump = Paint()..color = const Color(0xFFFFF176)..strokeWidth = 1.0..isAntiAlias=true;
 
-    // Stumps
+    // స్టంప్స్
     if (!stumpBroken) { 
       canvas.drawRect(Rect.fromLTWH(x - 4, y - 5, 1, 6), pStump);
       canvas.drawRect(Rect.fromLTWH(x - 2, y - 5, 1, 6), pStump);
@@ -577,13 +579,13 @@ class Batsman extends Component with HasGameRef<CricketGame> {
       canvas.drawRect(Rect.fromLTWH(x - 2, y, 3, 1), pStump);
     }
 
-    // Humanoid Body
-    canvas.drawCircle(Offset(x + 4, y - 7), 2.0, pHat); // Helmet
-    canvas.drawLine(Offset(x + 4, y - 4), Offset(x + 4, y), pJersey); // Torso
-    canvas.drawLine(Offset(x + 4, y), Offset(x + 3, y + 3), pPants); // Left Leg
-    canvas.drawLine(Offset(x + 4, y), Offset(x + 6, y + 3), pPants); // Right Leg
+    // బ్యాట్స్‌మాన్ బాడీ
+    canvas.drawCircle(Offset(x + 4, y - 7), 2.0, pHat); 
+    canvas.drawLine(Offset(x + 4, y - 4), Offset(x + 4, y), pJersey); 
+    canvas.drawLine(Offset(x + 4, y), Offset(x + 3, y + 3), pPants); 
+    canvas.drawLine(Offset(x + 4, y), Offset(x + 6, y + 3), pPants); 
     
-    // Bat
+    // బ్యాట్ ఊపడం
     if (swing) { 
       canvas.drawLine(Offset(x + 4, y - 1), Offset(x - 6, y - 1), pBat); 
     } else { 
