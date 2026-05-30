@@ -25,7 +25,6 @@ class _GameScreenState extends State<GameScreen> {
   void initState() {
     super.initState();
     game = CricketGame();
-    // cricket_game.dart లో maxBalls మరియు maxWickets వేరియబుల్స్ ఉండాలి
     game.maxBalls = widget.balls;
     game.maxWickets = widget.wickets;
   }
@@ -109,7 +108,7 @@ class _GameScreenState extends State<GameScreen> {
           ),
           ElevatedButton.icon(
             onPressed: () {
-              game.onTap(); // cricket_game.dart లో ఈ మెథడ్ ఉండాలి
+              game.onTap();
             },
             icon: const Icon(Icons.sports_cricket),
             label: const Text("Hit"),
@@ -168,7 +167,7 @@ class _GameScreenState extends State<GameScreen> {
                   content: ValueListenableBuilder<int>(
                     valueListenable: game.scoreNotifier,
                     builder: (_, score, __) {
-                      int coins = score * 2; // ఇక్కడ ఇరువైపులా int అవ్వడం వల్ల ఎర్రర్ రాదు
+                      int coins = score * 2;
 
                       return Column(
                         mainAxisSize: MainAxisSize.min,
