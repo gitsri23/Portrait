@@ -121,12 +121,12 @@ class CricketGame extends FlameGame with TapCallbacks {
   String bLabelText = '';
   double bLabelTimer = 0;
 
-  // --- SHOT METER VARIABLES ---
+  // SHOT METER VARIABLES
   double timingProgress = -1.0; 
   String timingLabel = '';
   double timingTimer = 0.0;
 
-  // రియల్ ఫీల్డింగ్ క్యాచ్ లాజిక్ కోసం
+  // FIELDING LOGIC
   Vector2 fieldBallPos = Vector2.zero();
   Vector2 fieldBallVel = Vector2.zero();
   List<Vector2> fielders = [];
@@ -137,9 +137,9 @@ class CricketGame extends FlameGame with TapCallbacks {
   bool isAerial = false; 
   double aerialLandingDistance = 0.0; 
 
-  // మ్యాన్యువల్ రన్నింగ్
+  // MANUAL RUNNING
   int currentRuns = 0;
-  double runProgress = 0.0; 
+  double runProgress = 0.0; // 0.0 to 1.0
   bool isBatsmanRunning = false;
   double runDirection = 1.0; 
 
@@ -178,13 +178,14 @@ class CricketGame extends FlameGame with TapCallbacks {
     bowler.phase = 'deliver'; bowler.frame = 0;
   }
 
+  // 9 Fielders Coordinates (Bowler, Keeper are drawn separately)
   List<Vector2> getFieldSetting() {
     int type = rng.nextInt(3);
-    if(type == 0) { 
+    if(type == 0) { // Defensive 
        return [Vector2(60, 15), Vector2(30, 25), Vector2(90, 25), Vector2(15, 60), Vector2(105, 60), Vector2(30, 95), Vector2(90, 95), Vector2(45, 45), Vector2(75, 45)];
-    } else if(type == 1) { 
+    } else if(type == 1) { // Attacking 
        return [Vector2(50, 45), Vector2(70, 45), Vector2(40, 60), Vector2(80, 60), Vector2(45, 75), Vector2(75, 75), Vector2(60, 20), Vector2(20, 30), Vector2(100, 30)];
-    } else { 
+    } else { // Normal 
        return [Vector2(60, 25), Vector2(35, 35), Vector2(85, 35), Vector2(25, 60), Vector2(95, 60), Vector2(40, 85), Vector2(80, 85), Vector2(20, 20), Vector2(100, 20)];
     }
   }
@@ -196,7 +197,6 @@ class CricketGame extends FlameGame with TapCallbacks {
     double by = ball.y;
     double distanceToStumps = (120 - by).abs();
 
-    // --- SHOT METER CALCULATION ---
     timingProgress = ((by - 90) / 60).clamp(0.0, 1.0);
     timingTimer = 1.5;
 
@@ -408,119 +408,67 @@ class CricketGame extends FlameGame with TapCallbacks {
       ..strokeWidth = 0.6;
 
     if (state == GameState.BOWLING || state == GameState.RESULT) {
-
-      // ── PITCH SURFACE FILL (perspective trapezoid) ──────────────────
-      // Top (far / bowler end): x 47‥73, y = 33
-      // Bottom (near / batting end): x 22‥98, y = 122
-      Path pitchFill = Path()
-        ..moveTo(47, 33)
-        ..lineTo(73, 33)
-        ..lineTo(98, 122)
-        ..lineTo(22, 122)
-        ..close();
+      Path pitchFill = Path()..moveTo(47, 33)..lineTo(73, 33)..lineTo(98, 122)..lineTo(22, 122)..close();
       canvas.drawPath(pitchFill, Paint()..color = const Color(0x1A0F380F));
 
-      // ── PITCH BOUNDARY LINES ────────────────────────────────────────
-      canvas.drawLine(const Offset(47, 33), const Offset(22, 122), pDarkStroke); // left side
-      canvas.drawLine(const Offset(73, 33), const Offset(98, 122), pDarkStroke); // right side
-
-      // ── BOWLING CREASE (far end) ────────────────────────────────────
+      canvas.drawLine(const Offset(47, 33), const Offset(22, 122), pDarkStroke); 
+      canvas.drawLine(const Offset(73, 33), const Offset(98, 122), pDarkStroke); 
       canvas.drawLine(const Offset(44, 33), const Offset(76, 33), pDarkStroke);
-
-      // ── BATTING / POPPING CREASE (near end) ────────────────────────
-      // Popping crease (white line batsman stands on) — slightly above base
       canvas.drawLine(const Offset(20, 118), const Offset(100, 118), pDarkStroke);
-      // Batting crease base
       canvas.drawLine(const Offset(20, 122), const Offset(100, 122), pDarkStroke);
-
-      // ── RETURN CREASES (short lines from crease inward) ────────────
       canvas.drawLine(const Offset(34, 122), const Offset(31, 100), pThinStroke);
       canvas.drawLine(const Offset(86, 122), const Offset(89, 100), pThinStroke);
 
-      // ── BALL TYPE LABEL ─────────────────────────────────────────────
-      final textP = TextPaint(
-        style: const TextStyle(
-          fontFamily: 'NokiaPixel',
-          color: Color(0xFF0F380F),
-          fontSize: 6,
-          fontWeight: FontWeight.bold,
-        ),
-      );
-      if (bLabelTimer > 0) {
-        textP.render(canvas, bLabelText, Vector2(60, 50), anchor: Anchor.center);
-      }
+      final textP = TextPaint(style: const TextStyle(fontFamily: 'NokiaPixel', color: Color(0xFF0F380F), fontSize: 6, fontWeight: FontWeight.bold));
+      if (bLabelTimer > 0) textP.render(canvas, bLabelText, Vector2(60, 50), anchor: Anchor.center);
 
     } else if (state == GameState.FIELDING) {
-      // ── FIELDING VIEW ───────────────────────────────────────────────
-      canvas.drawCircle(
-        const Offset(60, 60), 48,
-        Paint()..color = const Color(0xFF306230)..style = PaintingStyle.stroke..strokeWidth = 1,
-      );
-      canvas.drawCircle(
-        const Offset(60, 60), 25,
-        Paint()..color = const Color(0xFF306230)..style = PaintingStyle.stroke..strokeWidth = 1,
-      );
+      // ── FIELDING VIEW (RADAR) ───────────────────────────────────────
+      canvas.drawCircle(const Offset(60, 60), 48, Paint()..color = const Color(0xFF306230)..style = PaintingStyle.stroke..strokeWidth = 1);
+      canvas.drawCircle(const Offset(60, 60), 25, Paint()..color = const Color(0xFF306230)..style = PaintingStyle.stroke..strokeWidth = 1);
+      
+      // Pitch Rectangle
       canvas.drawRect(const Rect.fromLTWH(56, 52, 8, 16), pLight);
 
-      for (var f in fielders) {
-        canvas.drawRect(
-          Rect.fromCenter(center: Offset(f.x, f.y), width: 3, height: 3), pDark,
-        );
-      }
-      canvas.drawCircle(Offset(fieldBallPos.x, fieldBallPos.y), 1.5, pDark);
+      // 1. WICKET KEEPER (Stumps వెనకాల)
+      canvas.drawRect(Rect.fromCenter(center: const Offset(60, 71), width: 3, height: 3), pDark);
+      
+      // 2. BOWLER (Bowling crease దగ్గర)
+      canvas.drawRect(Rect.fromCenter(center: const Offset(60, 49), width: 3, height: 3), pDark);
 
-      canvas.drawRect(
-        const Rect.fromLTWH(105, 40, 8, 40),
-        Paint()..color = const Color(0xFF306230)..style = PaintingStyle.stroke,
-      );
-      double runnerY = 77 - (runProgress * 34);
-      canvas.drawRect(Rect.fromLTWH(106, runnerY, 6, 4), pDark);
+      // 3. 9 FIELDERS
+      for (var f in fielders) {
+        canvas.drawRect(Rect.fromCenter(center: Offset(f.x, f.y), width: 3, height: 3), pDark);
+      }
+
+      // 4. BATSMEN (పరిస్థితిని బట్టి కదిలే 2 చుక్కలు)
+      // runProgress (0 -> 1) ని బట్టి ఇద్దరూ వ్యతిరేక దిశల్లో పరిగెత్తుతారు
+      double batAy = 66 - (runProgress * 12); // Striker
+      double batBy = 54 + (runProgress * 12); // Non-Striker
+      canvas.drawRect(Rect.fromCenter(center: Offset(58, batAy), width: 3, height: 3), pDark);
+      canvas.drawRect(Rect.fromCenter(center: Offset(62, batBy), width: 3, height: 3), pDark);
+
+      // BALL
+      canvas.drawCircle(Offset(fieldBallPos.x, fieldBallPos.y), 1.5, pDark);
     }
 
     // ── SHOT METER UI ────────────────────────────────────────────────
     if (timingTimer > 0) {
       double mx = 5; double my = 35; double mw = 6; double mh = 60;
-      canvas.drawRect(
-        Rect.fromLTWH(mx, my, mw, mh),
-        Paint()..color = const Color(0xFF306230)..style = PaintingStyle.stroke,
-      );
-      double perfectY = my + (mh * 0.4);
-      double perfectH = mh * 0.2;
+      canvas.drawRect(Rect.fromLTWH(mx, my, mw, mh), Paint()..color = const Color(0xFF306230)..style = PaintingStyle.stroke);
+      double perfectY = my + (mh * 0.4); double perfectH = mh * 0.2;
       canvas.drawRect(Rect.fromLTWH(mx, perfectY, mw, perfectH), pDark);
       double indY = my + (timingProgress * mh);
-      canvas.drawLine(
-        Offset(mx - 2, indY), Offset(mx + mw + 2, indY),
-        Paint()..color = const Color(0xFF0F380F)..strokeWidth = 2,
-      );
-      final tp = TextPaint(
-        style: const TextStyle(
-          fontFamily: 'NokiaPixel',
-          color: Color(0xFF0F380F),
-          fontSize: 8,
-          fontWeight: FontWeight.bold,
-        ),
-      );
+      canvas.drawLine(Offset(mx - 2, indY), Offset(mx + mw + 2, indY), Paint()..color = const Color(0xFF0F380F)..strokeWidth = 2);
+      final tp = TextPaint(style: const TextStyle(fontFamily: 'NokiaPixel', color: Color(0xFF0F380F), fontSize: 8, fontWeight: FontWeight.bold));
       tp.render(canvas, timingLabel, Vector2(mx + 12, indY - 4));
     }
 
     if (state == GameState.RESULT) {
       if (rMsg.isNotEmpty) {
-        canvas.drawRect(
-          const Rect.fromLTWH(25, 60, 70, 20),
-          Paint()..color = const Color(0xFF8BAC0F),
-        );
-        canvas.drawRect(
-          const Rect.fromLTWH(25, 60, 70, 20),
-          Paint()..color = const Color(0xFF0F380F)..style = PaintingStyle.stroke..strokeWidth = 2,
-        );
-        final rPaint = TextPaint(
-          style: const TextStyle(
-            fontFamily: 'NokiaPixel',
-            color: Color(0xFF0F380F),
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-          ),
-        );
+        canvas.drawRect(const Rect.fromLTWH(25, 60, 70, 20), Paint()..color = const Color(0xFF8BAC0F));
+        canvas.drawRect(const Rect.fromLTWH(25, 60, 70, 20), Paint()..color = const Color(0xFF0F380F)..style = PaintingStyle.stroke..strokeWidth = 2);
+        final rPaint = TextPaint(style: const TextStyle(fontFamily: 'NokiaPixel', color: Color(0xFF0F380F), fontSize: 10, fontWeight: FontWeight.bold));
         rPaint.render(canvas, rMsg, Vector2(60, 70), anchor: Anchor.center);
       }
     }
@@ -528,176 +476,100 @@ class CricketGame extends FlameGame with TapCallbacks {
 }
 
 // ---------------------------------------------------------
-// BALL — slightly larger for visibility
+// Visual Models
 // ---------------------------------------------------------
 class Ball extends Component with HasGameRef<CricketGame> {
   double x = 60, y = 35, vy = 0, bounceAt = 0;
   bool isActive = false, bounced = false;
 
-  @override
-  void render(Canvas canvas) {
+  @override void render(Canvas canvas) {
     if (!isActive || gameRef.state != GameState.BOWLING) return;
-    // Filled circle + tiny white highlight = Nokia pixel-art ball feel
-    canvas.drawCircle(
-      Offset(x, y), 2.0,
-      Paint()..color = const Color(0xFF0F380F),
-    );
-    canvas.drawCircle(
-      Offset(x - 0.5, y - 0.5), 0.6,
-      Paint()..color = const Color(0xFF8BAC0F),
-    );
+    canvas.drawCircle(Offset(x, y), 2.0, Paint()..color = const Color(0xFF0F380F));
+    canvas.drawCircle(Offset(x - 0.5, y - 0.5), 0.6, Paint()..color = const Color(0xFF8BAC0F));
   }
 }
 
-// ---------------------------------------------------------
-// BOWLER — Nokia pixel-art stick figure (small = far end)
-// Reference: small figure at top of pitch, arm raised in delivery
-// ---------------------------------------------------------
 class Bowler extends Component with HasGameRef<CricketGame> {
-  double x = 60, y = 27;
-  String phase = 'idle';
-  int frame = 0;
+  double x = 60, y = 27; String phase = 'idle'; int frame = 0;
 
-  @override
-  void render(Canvas canvas) {
+  @override void render(Canvas canvas) {
     if (gameRef.state != GameState.BOWLING) return;
-
-    final p = Paint()
-      ..color = const Color(0xFF0F380F)
-      ..strokeWidth = 1.0
-      ..strokeCap = StrokeCap.round;
+    final p = Paint()..color = const Color(0xFF0F380F)..strokeWidth = 1.0..strokeCap = StrokeCap.round;
     final pFill = Paint()..color = const Color(0xFF0F380F);
 
-    // ── HEAD (small circle for Nokia feel) ──
     canvas.drawCircle(Offset(x, y - 6), 1.5, pFill);
-
     if (phase == 'idle') {
-      // Standing at rest, holding ball
-      canvas.drawLine(Offset(x, y - 4.5), Offset(x, y - 0.5), p);     // body
-      canvas.drawLine(Offset(x, y - 3.5), Offset(x - 2, y - 2), p);   // left arm (holds ball)
-      canvas.drawCircle(Offset(x - 2.5, y - 1.8), 1.0, pFill);        // ball in hand
-      canvas.drawLine(Offset(x, y - 3.5), Offset(x + 2, y - 2.5), p); // right arm out
-      canvas.drawLine(Offset(x, y - 0.5), Offset(x - 1.5, y + 2.5), p); // left leg
-      canvas.drawLine(Offset(x, y - 0.5), Offset(x + 1.5, y + 2.5), p); // right leg
-
+      canvas.drawLine(Offset(x, y - 4.5), Offset(x, y - 0.5), p);     
+      canvas.drawLine(Offset(x, y - 3.5), Offset(x - 2, y - 2), p);   
+      canvas.drawCircle(Offset(x - 2.5, y - 1.8), 1.0, pFill);        
+      canvas.drawLine(Offset(x, y - 3.5), Offset(x + 2, y - 2.5), p); 
+      canvas.drawLine(Offset(x, y - 0.5), Offset(x - 1.5, y + 2.5), p); 
+      canvas.drawLine(Offset(x, y - 0.5), Offset(x + 1.5, y + 2.5), p); 
     } else if (phase == 'runup') {
-      // Alternating run-up strides
       int f = (frame / 3).floor() % 2;
-      canvas.drawLine(Offset(x, y - 4.5), Offset(x, y - 0.5), p); // body
-
+      canvas.drawLine(Offset(x, y - 4.5), Offset(x, y - 0.5), p); 
       if (f == 0) {
-        // Stride A — left foot forward
-        canvas.drawLine(Offset(x, y - 0.5), Offset(x - 2, y + 2.5), p);   // left leg fwd
-        canvas.drawLine(Offset(x, y - 0.5), Offset(x + 1, y + 0.5), p);   // right leg back
-        canvas.drawLine(Offset(x, y - 3.5), Offset(x + 2.5, y - 2), p);   // right arm fwd
-        canvas.drawLine(Offset(x, y - 3.5), Offset(x - 1.5, y - 1.5), p); // left arm back
+        canvas.drawLine(Offset(x, y - 0.5), Offset(x - 2, y + 2.5), p);   
+        canvas.drawLine(Offset(x, y - 0.5), Offset(x + 1, y + 0.5), p);   
+        canvas.drawLine(Offset(x, y - 3.5), Offset(x + 2.5, y - 2), p);   
+        canvas.drawLine(Offset(x, y - 3.5), Offset(x - 1.5, y - 1.5), p); 
       } else {
-        // Stride B — right foot forward
-        canvas.drawLine(Offset(x, y - 0.5), Offset(x - 1, y + 0.5), p);   // left leg back
-        canvas.drawLine(Offset(x, y - 0.5), Offset(x + 2, y + 2.5), p);   // right leg fwd
-        canvas.drawLine(Offset(x, y - 3.5), Offset(x - 2.5, y - 2), p);   // left arm fwd
-        canvas.drawLine(Offset(x, y - 3.5), Offset(x + 1.5, y - 1.5), p); // right arm back
+        canvas.drawLine(Offset(x, y - 0.5), Offset(x - 1, y + 0.5), p);   
+        canvas.drawLine(Offset(x, y - 0.5), Offset(x + 2, y + 2.5), p);   
+        canvas.drawLine(Offset(x, y - 3.5), Offset(x - 2.5, y - 2), p);   
+        canvas.drawLine(Offset(x, y - 3.5), Offset(x + 1.5, y - 1.5), p); 
       }
-
     } else if (phase == 'deliver') {
-      // DELIVERY ACTION — body leaning, bowling arm HIGH overhead
-      canvas.drawLine(Offset(x, y - 4.5), Offset(x + 1, y - 0.5), p);      // body leaning fwd
-      // Front foot planted forward
+      canvas.drawLine(Offset(x, y - 4.5), Offset(x + 1, y - 0.5), p);      
       canvas.drawLine(Offset(x + 1, y - 0.5), Offset(x - 1.5, y + 2.5), p);
-      // Back foot braced
       canvas.drawLine(Offset(x + 1, y - 0.5), Offset(x + 3, y + 1.5), p);
-      // BOWLING ARM — raised above head (key visual cue)
-      canvas.drawLine(Offset(x, y - 3.5), Offset(x + 2, y - 7.5), p);      // upper arm up
-      canvas.drawLine(Offset(x + 2, y - 7.5), Offset(x + 1, y - 9), p);    // forearm / wrist
-      // Non-bowling arm — balanced out front
+      canvas.drawLine(Offset(x, y - 3.5), Offset(x + 2, y - 7.5), p);      
+      canvas.drawLine(Offset(x + 2, y - 7.5), Offset(x + 1, y - 9), p);    
       canvas.drawLine(Offset(x, y - 3.5), Offset(x - 2.5, y - 2.5), p);
     }
   }
 }
 
-// ---------------------------------------------------------
-// BATSMAN — Nokia pixel-art cricket batting stance
-// Reference: larger figure at bottom, crouching, bat visible
-// ---------------------------------------------------------
 class Batsman extends Component with HasGameRef<CricketGame> {
-  double x = 60, y = 115, swingTimer = 0;
-  bool swing = false, stumpBroken = false;
+  double x = 60, y = 115, swingTimer = 0; bool swing = false, stumpBroken = false;
 
-  @override
-  void render(Canvas canvas) {
+  @override void render(Canvas canvas) {
     if (gameRef.state != GameState.BOWLING) return;
-
     final pFill   = Paint()..color = const Color(0xFF0F380F);
-    final pLine   = Paint()
-      ..color = const Color(0xFF0F380F)
-      ..strokeWidth = 1.5
-      ..strokeCap = StrokeCap.round;
-    final pThick  = Paint()
-      ..color = const Color(0xFF0F380F)
-      ..strokeWidth = 2.5
-      ..strokeCap = StrokeCap.round;
-    final pThin   = Paint()
-      ..color = const Color(0xFF0F380F)
-      ..strokeWidth = 1.0
-      ..strokeCap = StrokeCap.round;
+    final pLine   = Paint()..color = const Color(0xFF0F380F)..strokeWidth = 1.5..strokeCap = StrokeCap.round;
+    final pThick  = Paint()..color = const Color(0xFF0F380F)..strokeWidth = 2.5..strokeCap = StrokeCap.round;
+    final pThin   = Paint()..color = const Color(0xFF0F380F)..strokeWidth = 1.0..strokeCap = StrokeCap.round;
 
-    // ── STUMPS ─────────────────────────────────────────────────────────
-    // 3 stumps, positioned slightly left of centre (batsman stands right)
     if (!stumpBroken) {
-      // Stump shafts
       canvas.drawRect(Rect.fromLTWH(x - 6.5, y - 7, 1.5, 8), pFill);
       canvas.drawRect(Rect.fromLTWH(x - 4,   y - 7, 1.5, 8), pFill);
       canvas.drawRect(Rect.fromLTWH(x - 1.5, y - 7, 1.5, 8), pFill);
-      // Bails — two small horizontal pieces across the top
-      canvas.drawRect(Rect.fromLTWH(x - 7,   y - 8, 3.5, 1.2), pFill); // left bail
-      canvas.drawRect(Rect.fromLTWH(x - 3.5, y - 8, 3.5, 1.2), pFill); // right bail
+      canvas.drawRect(Rect.fromLTWH(x - 7,   y - 8, 3.5, 1.2), pFill); 
+      canvas.drawRect(Rect.fromLTWH(x - 3.5, y - 8, 3.5, 1.2), pFill); 
     } else {
-      // BOWLED — stumps scattered / broken
       canvas.drawLine(Offset(x - 6, y - 4), Offset(x - 8, y + 1), pLine);
       canvas.drawLine(Offset(x - 3.5, y - 7), Offset(x - 1, y - 2), pLine);
       canvas.drawLine(Offset(x - 1, y - 5), Offset(x + 1, y), pLine);
-      // Bail flying off
       canvas.drawRect(Rect.fromLTWH(x - 5, y - 10, 4, 1), pFill);
     }
 
-    // ── BATSMAN BODY ───────────────────────────────────────────────────
-    // Positioned right of stumps; faces the bowler (top of screen)
-    // Classic right-handed batting stance — crouching, knees slightly bent
-
-    const double bx = 66;   // batsman x (right of stumps)
-    final double by = y;
-
-    // Head — round (Nokia circle)
+    const double bx = 66; final double by = y;
     canvas.drawCircle(Offset(bx, by - 14), 2.5, pFill);
-    // Helmet peak — small line extending left
     canvas.drawLine(Offset(bx - 2.5, by - 12.5), Offset(bx - 5, by - 12.5), pThin);
-
-    // Torso — leaning slightly forward (toward bowler)
     canvas.drawLine(Offset(bx, by - 11.5), Offset(bx - 1, by - 5.5), pLine);
-
-    // ── LEGS (crouching batting stance) ──
-    // Front leg (left) — bent knee
-    canvas.drawLine(Offset(bx - 1, by - 5.5), Offset(bx - 3, by - 1.5), pLine); // thigh
-    canvas.drawLine(Offset(bx - 3, by - 1.5), Offset(bx - 1.5, by + 1.5), pLine); // shin (bent)
-    // Back leg (right) — straighter, weight on it
-    canvas.drawLine(Offset(bx - 1, by - 5.5), Offset(bx + 2.5, by - 2), pLine);   // thigh
-    canvas.drawLine(Offset(bx + 2.5, by - 2), Offset(bx + 2.5, by + 1.5), pLine); // shin
+    canvas.drawLine(Offset(bx - 1, by - 5.5), Offset(bx - 3, by - 1.5), pLine); 
+    canvas.drawLine(Offset(bx - 3, by - 1.5), Offset(bx - 1.5, by + 1.5), pLine); 
+    canvas.drawLine(Offset(bx - 1, by - 5.5), Offset(bx + 2.5, by - 2), pLine);   
+    canvas.drawLine(Offset(bx + 2.5, by - 2), Offset(bx + 2.5, by + 1.5), pLine); 
 
     if (!swing) {
-      // ── GUARD POSITION — bat held down at crease ──
-      // Top hand (left) near body
       canvas.drawLine(Offset(bx - 1, by - 10), Offset(bx - 4, by - 8.5), pLine);
-      // Bottom hand — gripping further down the handle
-      canvas.drawLine(Offset(bx - 4, by - 8.5), Offset(bx - 5.5, by - 5), pLine); // handle
-      // Bat blade — angled downward (Nokia block shape)
+      canvas.drawLine(Offset(bx - 4, by - 8.5), Offset(bx - 5.5, by - 5), pLine); 
       canvas.drawRect(Rect.fromLTWH(bx - 7.5, by - 5, 3, 6), pFill);
     } else {
-      // ── DRIVE / SWING — bat through the line ──
-      // Arms extended through the shot (horizontal follow-through)
-      canvas.drawLine(Offset(bx - 1, by - 10), Offset(bx + 4, by - 11), pLine); // arms out
-      // Bat — almost horizontal, blade pointing left (shot direction)
-      canvas.drawRect(Rect.fromLTWH(bx - 8, by - 13.5, 8, 3), pFill);  // bat blade
-      canvas.drawLine(Offset(bx - 0.5, by - 12), Offset(bx + 4, by - 11), pThick); // handle
+      canvas.drawLine(Offset(bx - 1, by - 10), Offset(bx + 4, by - 11), pLine); 
+      canvas.drawRect(Rect.fromLTWH(bx - 8, by - 13.5, 8, 3), pFill);  
+      canvas.drawLine(Offset(bx - 0.5, by - 12), Offset(bx + 4, by - 11), pThick); 
     }
   }
 }
