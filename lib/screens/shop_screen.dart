@@ -1,295 +1,155 @@
 import 'package:flutter/material.dart';
+import '../game_data.dart';
 
-import '../services/save_service.dart';
+class BatItem {
+  final String name;
+  final double power;
+  final int price;
+
+  BatItem(this.name, this.power, this.price);
+}
 
 class ShopScreen extends StatefulWidget {
   const ShopScreen({super.key});
 
   @override
-  State<ShopScreen> createState() =>
-      _ShopScreenState();
+  State<ShopScreen> createState() => _ShopScreenState();
 }
 
-class _ShopScreenState
-    extends State<ShopScreen> {
-
-  int coins = 0;
-
-  String selectedBat = "WOOD";
-
-  List<String> unlocked = [];
-
-  final bats = [
-
-    {
-      "name":"WOOD",
-      "price":0,
-      "power":1.0,
-    },
-
-    {
-      "name":"STEEL",
-      "price":100,
-      "power":1.1,
-    },
-
-    {
-      "name":"GOLD",
-      "price":500,
-      "power":1.2,
-    },
-
-    {
-      "name":"DIAMOND",
-      "price":1000,
-      "power":1.35,
-    },
-
-    {
-      "name":"LEGEND",
-      "price":2500,
-      "power":1.5,
-    },
+class _ShopScreenState extends State<ShopScreen> {
+  final List<BatItem> bats = [
+    BatItem("WOOD", 1.0, 0),
+    BatItem("STEEL", 1.1, 100),
+    BatItem("GOLD", 1.2, 500),
+    BatItem("DIAMOND", 1.35, 1000),
   ];
 
-  @override
-  void initState() {
-    super.initState();
+  void handleBatAction(BatItem bat) async {
+    bool isBought = GameData.isBatBought(bat.name);
 
-    loadData();
-  }
-
-  Future<void> loadData() async {
-
-    coins =
-        await SaveService.loadCoins();
-
-    selectedBat =
-        await SaveService.loadSelectedBat();
-
-    unlocked =
-        await SaveService
-            .loadUnlockedBats();
-
-    setState(() {});
-  }
-
-  Future<void> buyBat(
-    String bat,
-    int price,
-  ) async {
-
-    if (coins < price) {
-
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
-        const SnackBar(
-          content:
-              Text("Not enough coins"),
-        ),
-      );
-
-      return;
+    if (isBought) {
+      // ఇప్పటికే కొనేసి ఉంటే దాన్ని ఎక్విప్ (Equip) చేయాలి
+      setState(() {
+        GameData.equippedBat = bat.name;
+      });
+    } else {
+      // కొనకపోతే ముందు కాయిన్స్ సరిపోతాయో లేదో చెక్ చేయాలి
+      int currentCoins = GameData.coins;
+      
+      if (currentCoins >= bat.price) {
+        // కాయిన్స్ సరిపోతే మైనస్ చేసి బ్యాట్ కొనాలి
+        setState(() {
+          GameData.coins = currentCoins - bat.price; 
+          GameData.buyBat(bat.name); 
+          GameData.equippedBat = bat.name; 
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("${bat.name} BOUGHT SUCCESSFULLY!"),
+            backgroundColor: const Color(0xFF306230),
+            duration: const Duration(seconds: 1),
+          )
+        );
+      } else {
+        // కాయిన్స్ సరిపోకపోతే ఎర్రర్ చూపించాలి
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("NOT ENOUGH COINS!"),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 1),
+          )
+        );
+      }
     }
-
-    coins -= price;
-
-    unlocked.add(bat);
-
-    await SaveService.saveCoins(
-      coins,
-    );
-
-    await SaveService
-        .saveUnlockedBats(
-      unlocked,
-    );
-
-    setState(() {});
-  }
-
-  Future<void> equipBat(
-    String bat,
-  ) async {
-
-    selectedBat = bat;
-
-    await SaveService
-        .saveSelectedBat(
-      bat,
-    );
-
-    setState(() {});
-  }
-
-  Widget buildBatCard(
-    Map bat,
-  ) {
-
-    final name =
-        bat["name"] as String;
-
-    final price =
-        bat["price"] as int;
-
-    final power =
-        bat["power"];
-
-    final owned =
-        unlocked.contains(name);
-
-    final equipped =
-        selectedBat == name;
-
-    return Container(
-
-      margin:
-          const EdgeInsets.only(
-        bottom: 12,
-      ),
-
-      padding:
-          const EdgeInsets.all(12),
-
-      decoration: BoxDecoration(
-        color:
-            const Color(0xFF8BAC0F),
-        borderRadius:
-            BorderRadius.circular(10),
-        border: Border.all(
-          color:
-              const Color(0xFF0F380F),
-          width: 3,
-        ),
-      ),
-
-      child: Column(
-        children: [
-
-          Text(
-            name,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight:
-                  FontWeight.bold,
-              color:
-                  Color(0xFF0F380F),
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          Text(
-            "POWER x$power",
-            style: const TextStyle(
-              color:
-                  Color(0xFF306230),
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          if (!owned)
-            Text(
-              "$price Coins",
-              style: const TextStyle(
-                color:
-                    Color(0xFF0F380F),
-              ),
-            ),
-
-          const SizedBox(height: 10),
-
-          if (!owned)
-
-            ElevatedButton(
-              onPressed: () =>
-                  buyBat(
-                name,
-                price,
-              ),
-              child:
-                  const Text("BUY"),
-            )
-
-          else if (!equipped)
-
-            ElevatedButton(
-              onPressed: () =>
-                  equipBat(
-                name,
-              ),
-              child:
-                  const Text("EQUIP"),
-            )
-
-          else
-
-            const Chip(
-              label:
-                  Text("EQUIPPED"),
-            ),
-        ],
-      ),
-    );
   }
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-
+  Widget build(BuildContext context) {
     return Scaffold(
-
-      backgroundColor:
-          Colors.black,
-
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        title:
-            const Text("BAT SHOP"),
+        backgroundColor: Colors.black,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          "BAT SHOP", 
+          style: TextStyle(color: Colors.white, fontFamily: 'monospace')
+        ),
       ),
-
       body: Column(
         children: [
-
+          // టాప్ బార్‌లో రియల్ కాయిన్స్
           Container(
             width: double.infinity,
-            padding:
-                const EdgeInsets.all(16),
-            color:
-                const Color(0xFF0F380F),
-
+            padding: const EdgeInsets.symmetric(vertical: 15),
+            color: const Color(0xFF0F380F),
             child: Text(
-              "COINS : $coins",
-              textAlign:
-                  TextAlign.center,
-              style:
-                  const TextStyle(
-                color:
-                    Color(0xFFC4E060),
-                fontSize: 20,
-                fontWeight:
-                    FontWeight.bold,
+              "COINS : ${GameData.coins}",
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFFC4E060), 
+                fontSize: 20, 
+                fontWeight: FontWeight.bold
               ),
             ),
           ),
-
+          const SizedBox(height: 10),
+          
+          // బ్యాట్స్ లిస్ట్
           Expanded(
             child: ListView.builder(
+              itemCount: bats.length,
+              itemBuilder: (context, index) {
+                final bat = bats[index];
+                bool isBought = GameData.isBatBought(bat.name);
+                bool isEquipped = GameData.equippedBat == bat.name;
 
-              padding:
-                  const EdgeInsets.all(
-                12,
-              ),
-
-              itemCount:
-                  bats.length,
-
-              itemBuilder:
-                  (context,index) {
-
-                return buildBatCard(
-                  bats[index],
+                return Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF8BAC0F),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF0F380F), width: 3),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        bat.name, 
+                        style: const TextStyle(color: Color(0xFF0F380F), fontSize: 22, fontWeight: FontWeight.bold)
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        "POWER x${bat.power}", 
+                        style: const TextStyle(color: Color(0xFF306230), fontSize: 14)
+                      ),
+                      const SizedBox(height: 5),
+                      
+                      if (!isBought)
+                        Text(
+                          "${bat.price} Coins", 
+                          style: const TextStyle(color: Color(0xFF0F380F), fontSize: 14)
+                        ),
+                      const SizedBox(height: 10),
+                      
+                      // బటన్ డిజైన్ మరియు యాక్షన్
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1E1E1E), 
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
+                        ),
+                        onPressed: () => handleBatAction(bat),
+                        child: Text(
+                          isEquipped ? "EQUIPPED" : (isBought ? "EQUIP" : "BUY"),
+                          style: const TextStyle(color: Color(0xFFC4E060), fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
                 );
               },
             ),
