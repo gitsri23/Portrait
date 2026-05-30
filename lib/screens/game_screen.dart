@@ -1,6 +1,7 @@
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import '../game/cricket_game.dart';
+import '../game_data.dart'; // GameData ఇంపోర్ట్ చేయండి
 
 class GameScreen extends StatefulWidget {
   final String leagueName;
@@ -86,6 +87,14 @@ class _GameScreenState extends State<GameScreen> {
 
         Future.delayed(const Duration(milliseconds: 500), () {
           if (!mounted) return;
+          
+          // రియల్ టైమ్ డేటా అప్‌డేట్
+          int finalScore = game.scoreNotifier.value;
+          int earnedCoins = finalScore * 2;
+          
+          GameData.coins += earnedCoins;
+          GameData.setBestScore(widget.leagueName, finalScore);
+
           showDialog(
             context: context,
             barrierDismissible: false,
@@ -96,27 +105,23 @@ class _GameScreenState extends State<GameScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               title: const Text("INNINGS OVER", textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF0F380F), fontWeight: FontWeight.bold)),
-              content: ValueListenableBuilder<int>(
-                valueListenable: game.scoreNotifier,
-                builder: (_, score, __) {
-                  int coins = score * 2;
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text("$score RUNS", style: const TextStyle(color: Color(0xFF0F380F), fontSize: 22, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 10),
-                      Text("COINS: $coins", style: const TextStyle(color: Color(0xFF306230), fontWeight: FontWeight.bold)),
-                    ],
-                  );
-                },
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text("$finalScore RUNS", style: const TextStyle(color: Color(0xFF0F380F), fontSize: 22, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 10),
+                  Text("COINS EARNED: +$earnedCoins", style: const TextStyle(color: Color(0xFF306230), fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 5),
+                  Text("TOTAL COINS: ${GameData.coins}", style: const TextStyle(color: Color(0xFF0F380F), fontSize: 12, fontWeight: FontWeight.bold)),
+                ],
               ),
               actionsAlignment: MainAxisAlignment.center,
               actions: [
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F380F)),
                   onPressed: () {
-                    Navigator.pop(context); 
-                    Navigator.pop(context); 
+                    Navigator.pop(context); // డైలాగ్ క్లోజ్
+                    Navigator.pop(context); // లీగ్ స్క్రీన్ కి వెనక్కి
                   },
                   child: const Text("BACK TO MENU", style: TextStyle(color: Color(0xFFC4E060))),
                 )
@@ -153,7 +158,7 @@ class _GameScreenState extends State<GameScreen> {
               const Text("NOKIA", style: TextStyle(color: Color(0xFF3A94D4), fontWeight: FontWeight.bold, letterSpacing: 4, fontSize: 18)),
               const SizedBox(height: 18),
               
-              // INNER GAME SCREEN (పాత ఎర్రర్‌ను ఇక్కడ FittedBox ద్వారా ఫిక్స్ చేశాం)
+              // ఇన్నర్ గేమ్ స్క్రీన్ (FittedBox ద్వారా ఫిట్ చేశాం)
               Container(
                 width: 250,
                 height: 350,
@@ -187,7 +192,7 @@ class _GameScreenState extends State<GameScreen> {
 
               const Spacer(),
               
-              // NOKIA KEYPAD
+              // కీప్యాడ్ బటన్స్
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
