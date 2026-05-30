@@ -3,10 +3,11 @@ import 'dart:math';
 import 'package:flame/components.dart';
 import 'package:flame/events.dart';
 import 'package:flame/game.dart';
+import 'package:flame/camera.dart'; // కొత్త Viewport కోసం ఇది యాడ్ చేశాం
 import 'package:flutter/material.dart';
 
-class CricketGame extends FlameGame
-    with TapDetector {
+// TapDetector బదులు TapCallbacks వాడుతున్నాం
+class CricketGame extends FlameGame with TapCallbacks {
 
   final Random rng = Random();
 
@@ -16,6 +17,12 @@ class CricketGame extends FlameGame
 
   int balls = 0;
   int maxBalls = 12;
+  int maxWickets = 3; // GameScreen నుండి దీనికి వాల్యూ వస్తుంది
+
+  // GameScreen కి డేటా పంపడానికి Notifiers
+  final ValueNotifier<int> scoreNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<int> wicketNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<bool> gameOverNotifier = ValueNotifier<bool>(false);
 
   String message = "";
   double messageTimer = 0;
@@ -29,8 +36,9 @@ class CricketGame extends FlameGame
   @override
   Future<void> onLoad() async {
 
-    camera.viewport = FixedResolutionViewport(
-      resolution: Vector2(360, 640),
+    // పాత FixedResolutionViewport బదులు ఇది
+    camera.viewport = FixedAspectRatioViewport(
+      aspectRatio: 360 / 640,
     );
 
     add(
@@ -87,13 +95,14 @@ class CricketGame extends FlameGame
       ball.hitChecked = true;
 
       wickets++;
+      wicketNotifier.value = wickets; // Notifier అప్‌డేట్
 
       balls++;
 
       showMessage("OUT!");
 
       if (balls >= maxBalls ||
-          wickets >= 3) {
+          wickets >= maxWickets) { // ఇక్కడ maxWickets తో చెక్ చేస్తున్నాం
         finishGame();
       } else {
         startBall();
@@ -110,7 +119,14 @@ class CricketGame extends FlameGame
     }
   }
 
+  // TapCallbacks వల్ల వచ్చే మెథడ్. ఇది పబ్లిక్ onTap() ని పిలుస్తుంది
   @override
+  void onTapDown(TapDownEvent event) {
+    super.onTapDown(event);
+    onTap();
+  }
+
+  // GameScreen నుండి మరియు స్క్రీన్ మీద నొక్కినప్పుడు రన్ అయ్యే మెథడ్
   void onTap() {
 
     if (gameOver) {
@@ -131,38 +147,32 @@ class CricketGame extends FlameGame
     if (distance < 15) {
 
       score += 6;
-
       balls++;
-
       showMessage("SIX!");
 
     } else if (distance < 30) {
 
       score += 4;
-
       balls++;
-
       showMessage("FOUR!");
 
     } else if (distance < 50) {
 
       score += 2;
-
       balls++;
-
       showMessage("2 RUNS");
 
     } else if (distance < 80) {
 
       score += 1;
-
       balls++;
-
       showMessage("1 RUN");
 
     } else {
       return;
     }
+
+    scoreNotifier.value = score; // Notifier అప్‌డేట్
 
     ball.position.y = -500;
 
@@ -184,6 +194,7 @@ class CricketGame extends FlameGame
   void finishGame() {
 
     gameOver = true;
+    gameOverNotifier.value = true; // Notifier అప్‌డేట్
 
     message =
         "GAME OVER\nScore: $score";
@@ -196,6 +207,10 @@ class CricketGame extends FlameGame
     score = 0;
     wickets = 0;
     balls = 0;
+
+    scoreNotifier.value = 0;
+    wicketNotifier.value = 0;
+    gameOverNotifier.value = false;
 
     gameOver = false;
 
