@@ -3,6 +3,7 @@ import 'package:flame/components.dart';
 import 'package:flame/events.dart';
 import 'package:flame/game.dart';
 import 'package:flame/camera.dart';
+import 'package:flame_audio/flame_audio.dart'; // సౌండ్స్ కోసం ఇంపోర్ట్ చేశాం
 import 'package:flutter/material.dart';
 
 // --- Ball Types Data ---
@@ -51,16 +52,7 @@ class CricketGame extends FlameGame with TapCallbacks {
   int score = 0;
   int wickets = 0;
   int balls = 0;
-
-  // Stats for achievements/rewards
   int combo = 0;
-  int maxCombo = 0;
-  int sixes = 0;
-  int fours = 0;
-  int perfects = 0;
-  int boundaries = 0;
-  Set<String> shotsPlayed = {};
-  List<dynamic> ballLog = [];
 
   final ValueNotifier<int> scoreNotifier = ValueNotifier<int>(0);
   final ValueNotifier<int> wicketNotifier = ValueNotifier<int>(0);
@@ -76,22 +68,37 @@ class CricketGame extends FlameGame with TapCallbacks {
   String rMsg = '';
   String rShot = '';
   double rTimer = 0;
-  double bowlT = 45;
+  double bowlT = 1.0;
 
   String bLabelText = '';
   double bLabelTimer = 0;
+
+  // ----------------------------------------------------
+  // SOUND MANAGER LOGIC
+  // ----------------------------------------------------
+  // మీరు assets/audio/ ఫోల్డర్ క్రియేట్ చేసి ఫైల్స్ వేసుకున్నాక ఇది 'true' చేయండి
+  bool soundEnabled = false; 
+
+  void playSfx(String fileName) {
+    if (soundEnabled) {
+      try {
+        FlameAudio.play(fileName);
+      } catch (e) {
+        // ఫైల్ లేకపోతే క్రాష్ అవ్వకుండా ఇగ్నోర్ చేస్తుంది
+      }
+    }
+  }
+  // ----------------------------------------------------
 
   @override
   Future<void> onLoad() async {
     camera.viewport = FixedAspectRatioViewport(aspectRatio: 120 / 160);
 
-    // BG
     add(RectangleComponent(
       size: Vector2(120, 160),
       paint: Paint()..color = const Color(0xFF8BAC0F),
     ));
 
-    // Crowd dots
     for (int i = 0; i < 30; i++) {
       add(RectangleComponent(
         position: Vector2((i * 4 + (i % 3)).toDouble(), rng.nextDouble() * 3 + 3),
@@ -100,18 +107,16 @@ class CricketGame extends FlameGame with TapCallbacks {
       ));
     }
 
-    // Pitch
     add(RectangleComponent(
       position: Vector2(34, 14),
       size: Vector2(52, 122),
       paint: Paint()..color = const Color(0xFFC4E060),
     ));
 
-    // Crease lines
-    final creasePaint = Paint()..color = const Color(0xFF0F380F);
-    add(RectangleComponent(position: Vector2(34, 18), size: Vector2(52, 1), paint: creasePaint));
-    add(RectangleComponent(position: Vector2(34, 28), size: Vector2(52, 1), paint: creasePaint));
-    add(RectangleComponent(position: Vector2(34, 118), size: Vector2(52, 1), paint: creasePaint));
+    final creaseP = Paint()..color = const Color(0xFF0F380F);
+    add(RectangleComponent(position: Vector2(34, 18), size: Vector2(52, 1), paint: creaseP));
+    add(RectangleComponent(position: Vector2(34, 28), size: Vector2(52, 1), paint: creaseP));
+    add(RectangleComponent(position: Vector2(34, 118), size: Vector2(52, 1), paint: creaseP));
 
     bowler = Bowler();
     batsman = Batsman();
@@ -122,21 +127,9 @@ class CricketGame extends FlameGame with TapCallbacks {
     add(bowler);
     add(batsman);
     add(ball);
-
-    resetG();
-  }
-
-  void resetG() {
-    score = 0; wickets = 0; balls = 0;
-    sixes = 0; fours = 0; boundaries = 0;
-    perfects = 0; combo = 0; maxCombo = 0;
-    shotsPlayed.clear(); ballLog.clear();
     
-    scoreNotifier.value = 0;
-    wicketNotifier.value = 0;
-    gameOverNotifier.value = false;
-    state = GameState.PLAY;
-    bowlT = 45;
+    // గేమ్ మొదలైనప్పుడు స్టార్ట్ సౌండ్
+    playSfx('start.mp3'); 
   }
 
   BallType pickBType() {
@@ -153,21 +146,22 @@ class CricketGame extends FlameGame with TapCallbacks {
     if (ball.isActive || bowler.phase != 'idle') return;
     bowler.phase = 'runup';
     bowler.frame = 0;
+    
+    playSfx('bowl.mp3'); // బౌలర్ పరుగెత్తేటప్పుడు సౌండ్
   }
 
   void releaseBall() {
     BallType bt = pickBType();
     ball.x = 60 + (rng.nextDouble() * 10 - 5);
     ball.y = 22;
-    // Speed multiplier based on ball type
-    ball.vy = (1.5 + rng.nextDouble() * 1.5) * bt.sm; 
+    ball.vy = (60.0 + rng.nextDouble() * 40.0) * bt.sm; 
     ball.isActive = true;
     ball.bounced = false;
     ball.bounceAt = bt.br[0] + rng.nextDouble() * (bt.br[1] - bt.br[0]);
     
     if (bt.label.isNotEmpty) {
       bLabelText = bt.label;
-      bLabelTimer = 0.5; // seconds
+      bLabelTimer = 0.8;
     }
     bowler.phase = 'deliver';
     bowler.frame = 0;
@@ -175,10 +169,7 @@ class CricketGame extends FlameGame with TapCallbacks {
 
   ShotType? detectShot(double by) {
     for (var entry in SHOTS.entries) {
-      if (by >= entry.value.yr[0] && by < entry.value.yr[1]) {
-        shotsPlayed.add(entry.key);
-        return entry.value;
-      }
+      if (by >= entry.value.yr[0] && by < entry.value.yr[1]) return entry.value;
     }
     return null;
   }
@@ -192,32 +183,36 @@ class CricketGame extends FlameGame with TapCallbacks {
     ShotType? sh = detectShot(by);
 
     if (sh != null) {
-      // Contact
       ball.isActive = false;
+      playSfx('hit.mp3'); // బ్యాట్‌కి తగిలిన సౌండ్
+
       int runs = sh.runs[0] + rng.nextInt(sh.runs[1] - sh.runs[0] + 1);
 
       combo++;
-      if (combo > maxCombo) maxCombo = combo;
       if (combo >= 3 && runs < 6) runs = min(runs + 1, 6);
-
-      if (runs == 6) { sixes++; boundaries++; }
-      else if (runs == 4) { fours++; boundaries++; }
-      
-      if (sh.name == 'STRAIGHT!') perfects++;
       
       score += runs;
       balls++;
-      ballLog.add(runs);
       scoreNotifier.value = score;
 
-      rMsg = runs == 6 ? 'SIX!' : runs == 4 ? 'FOUR!' : '$runs RUNS';
+      if (runs == 6) {
+        playSfx('six.mp3');
+        rMsg = 'SIX!';
+      } else if (runs == 4) {
+        playSfx('four.mp3');
+        rMsg = 'FOUR!';
+      } else {
+        playSfx('runs.mp3'); // 1, 2 లేదా 3 రన్స్ కి సౌండ్
+        rMsg = '$runs RUNS';
+      }
+
       rShot = sh.name;
       endBall(1.5);
     } else if (by > 139) {
-      // Too late
       ball.isActive = false;
-      combo = 0; balls++; ballLog.add(0);
+      combo = 0; balls++;
       rMsg = 'MISSED!'; rShot = '';
+      playSfx('miss.mp3'); // బ్యాట్ మిస్ అయినప్పుడు సౌండ్
       endBall(1.0);
     }
   }
@@ -229,14 +224,9 @@ class CricketGame extends FlameGame with TapCallbacks {
     bowler.frame = 0;
   }
 
-  void finishInnings() {
-    gameOverNotifier.value = true;
-  }
-
   @override
   void update(double dt) {
     super.update(dt);
-
     if (gameOverNotifier.value) return;
 
     if (bLabelTimer > 0) bLabelTimer -= dt;
@@ -244,38 +234,35 @@ class CricketGame extends FlameGame with TapCallbacks {
     if (state == GameState.PLAY) {
       if (bowler.phase == 'runup') {
         bowler.frame++;
-        if (bowler.frame >= 24) releaseBall();
+        if (bowler.frame >= 15) releaseBall();
       } else if (bowler.phase == 'deliver') {
         bowler.frame++;
-        if (bowler.frame > 12) {
-          bowler.phase = 'idle';
-          bowler.frame = 0;
-        }
+        if (bowler.frame > 8) { bowler.phase = 'idle'; bowler.frame = 0; }
       } else if (bowler.phase == 'idle' && !ball.isActive) {
-        bowlT -= dt * 60; 
+        bowlT -= dt;
         if (bowlT <= 0) startBowl();
       }
 
       if (ball.isActive) {
         if (!ball.bounced && ball.y >= ball.bounceAt) {
-          ball.vy = ball.vy * 0.7 + 0.4;
+          ball.vy = ball.vy * 0.7 + 20; 
           ball.bounced = true;
+          playSfx('bounce.mp3'); // బాల్ పిచ్ పైన పడినప్పుడు సౌండ్
         }
-        ball.y += ball.vy;
+        ball.y += ball.vy * dt;
 
-        // Hit Stumps
         if (ball.y >= 120 && ball.y <= 128 && (ball.x - 60).abs() < 8) {
           ball.isActive = false;
-          wickets++; balls++; combo = 0; ballLog.add('W');
+          wickets++; balls++; combo = 0;
           wicketNotifier.value = wickets;
           batsmanStumps.broken = true;
-          batsmanStumps.t = 0.6; // 600ms animation
+          batsmanStumps.t = 0.6;
           rMsg = 'OUT! W'; rShot = '';
+          playSfx('out.mp3'); // వికెట్ పడినప్పుడు సౌండ్
           endBall(1.8);
         }
-        // Keeper caught
-        if (ball.y > 160) {
-          ball.isActive = false; combo = 0; balls++; ballLog.add(0);
+        else if (ball.y > 160) {
+          ball.isActive = false; combo = 0; balls++;
           rMsg = 'DOT'; rShot = '';
           endBall(0.8);
         }
@@ -285,7 +272,6 @@ class CricketGame extends FlameGame with TapCallbacks {
         batsman.swingTimer -= dt;
         if (batsman.swingTimer <= 0) batsman.swing = false;
       }
-      
       if (batsmanStumps.broken && batsmanStumps.t > 0) {
         batsmanStumps.t -= dt;
       }
@@ -295,12 +281,13 @@ class CricketGame extends FlameGame with TapCallbacks {
       if (rTimer <= 0) {
         batsmanStumps.broken = false;
         if (balls >= maxBalls || wickets >= maxWickets) {
-          finishInnings();
+          playSfx('over.mp3'); // మ్యాచ్ పూర్తయినప్పుడు సౌండ్
+          gameOverNotifier.value = true;
         } else {
           state = GameState.PLAY;
           ball.isActive = false;
           bowler.phase = 'idle';
-          bowlT = 35;
+          bowlT = 0.8;
         }
       }
     }
@@ -321,37 +308,29 @@ class CricketGame extends FlameGame with TapCallbacks {
   void render(Canvas canvas) {
     super.render(canvas);
     
-    // Ball label
-    if (bLabelTimer > 0) {
-      final msgPaint = TextPaint(
-        style: const TextStyle(color: Color(0xFF0F380F), fontSize: 5, fontFamily: 'Press Start 2P'),
-      );
-      msgPaint.render(canvas, bLabelText, Vector2(60, 40), anchor: Anchor.center);
-    }
+    final textP = TextPaint(style: const TextStyle(color: Color(0xFF0F380F), fontSize: 6, fontWeight: FontWeight.bold));
+    if (bLabelTimer > 0) textP.render(canvas, bLabelText, Vector2(60, 40), anchor: Anchor.center);
 
-    // Result popup
     if (state == GameState.RESULT) {
       canvas.drawRect(const Rect.fromLTWH(15, 58, 90, 34), Paint()..color = const Color(0xFF0F380F));
       canvas.drawRect(const Rect.fromLTWH(17, 60, 86, 30), Paint()..color = const Color(0xFFC4E060));
       
       final rPaint = TextPaint(style: TextStyle(color: const Color(0xFF0F380F), fontSize: rMsg.length > 6 ? 8 : 10, fontWeight: FontWeight.bold));
-      rPaint.render(canvas, rMsg, Vector2(60, 73), anchor: Anchor.center);
+      rPaint.render(canvas, rMsg, Vector2(60, 70), anchor: Anchor.center);
       
       if (rShot.isNotEmpty) {
-        final sPaint = TextPaint(style: const TextStyle(color: Color(0xFF306230), fontSize: 5));
-        sPaint.render(canvas, rShot, Vector2(60, 83), anchor: Anchor.center);
+        final sPaint = TextPaint(style: const TextStyle(color: Color(0xFF306230), fontSize: 6, fontWeight: FontWeight.bold));
+        sPaint.render(canvas, rShot, Vector2(60, 82), anchor: Anchor.center);
       }
     }
   }
 }
 
 class Ball extends Component {
-  double x = 60;
-  double y = 22;
-  double vy = 0;
-  bool isActive = false;
-  bool bounced = false;
-  double bounceAt = 0;
+  double x = 60, y = 22, vy = 0, bounceAt = 0;
+  bool isActive = false, bounced = false;
+
+  void reset() { isActive = false; bounced = false; }
 
   @override
   void render(Canvas canvas) {
@@ -362,8 +341,7 @@ class Ball extends Component {
 }
 
 class Bowler extends Component {
-  double x = 60;
-  double y = 19;
+  double x = 60, y = 19;
   String phase = 'idle';
   int frame = 0;
 
@@ -390,10 +368,8 @@ class Bowler extends Component {
 }
 
 class Batsman extends Component {
-  double x = 60;
-  double y = 126;
+  double x = 60, y = 126, swingTimer = 0;
   bool swing = false;
-  double swingTimer = 0;
 
   @override
   void render(Canvas canvas) {
@@ -406,11 +382,8 @@ class Batsman extends Component {
     p(x - 3, y - 6, 7, 5, p0);
     p(x - 3, y - 1, 3, 6, p0); p(x + 1, y - 1, 3, 6, p0);
     
-    if (swing) {
-      p(x - 11, y - 3, 9, 2, p0); p(x - 12, y - 5, 2, 5, p0);
-    } else {
-      p(x + 4, y - 3, 2, 9, p0); p(x + 3, y + 4, 4, 2, p0);
-    }
+    if (swing) { p(x - 11, y - 3, 9, 2, p0); p(x - 12, y - 5, 2, 5, p0); } 
+    else { p(x + 4, y - 3, 2, 9, p0); p(x + 3, y + 4, 4, 2, p0); }
   }
 }
 
