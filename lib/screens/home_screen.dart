@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'league_screen.dart';
 import 'shop_screen.dart';
 import 'achievement_screen.dart';
+import '../game_data.dart'; // GameData ఫైల్ కచ్చితంగా ఇంపోర్ట్ చేయాలి
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,7 +13,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int selected = 0;
-
   final List<String> menuItems = [
     "PLAY",
     "SHOP",
@@ -20,9 +20,6 @@ class _HomeScreenState extends State<HomeScreen> {
     "ACHIEVEMENTS",
     "EXIT"
   ];
-
-  int coins = 250;
-  int level = 3;
 
   void moveUp() {
     setState(() {
@@ -42,34 +39,31 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void selectItem() {
+  // నావిగేషన్ తర్వాత డేటా రిఫ్రెష్ చేయడానికి async వాడాము
+  void selectItem() async {
     String item = menuItems[selected];
 
     if (item == "PLAY") {
-      Navigator.push(
+      await Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => const LeagueScreen(),
-        ),
+        MaterialPageRoute(builder: (_) => const LeagueScreen()),
       );
+      setState(() {}); // ఆడి వచ్చాక కాయిన్స్ రిఫ్రెష్ అవుతాయి
     } else if (item == "SHOP") {
-      Navigator.push(
+      await Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => const ShopScreen(), // మీ shop_screen.dart లోని క్లాస్ పేరు ఇక్కడ ఉండాలి
-        ),
+        MaterialPageRoute(builder: (_) => const ShopScreen()),
       );
+      setState(() {}); // కొని వచ్చాక కాయిన్స్ రిఫ్రెష్ అవుతాయి
     } else if (item == "ACHIEVEMENTS") {
-      Navigator.push(
+      await Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => const AchievementScreen(), // మీ achievement_screen.dart లోని క్లాస్ పేరు ఇక్కడ ఉండాలి
-        ),
+        MaterialPageRoute(builder: (_) => const AchievementScreen()),
       );
+      setState(() {});
     } else if (item == "EXIT") {
       Navigator.pop(context);
     } else {
-      // STATS లేదా ఫ్యూచర్‌లో యాడ్ చేసే వాటికి ఇది రన్ అవుతుంది
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("$item Coming Soon"),
@@ -78,18 +72,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Widget buildMenuItem(
-    String text,
-    bool active,
-  ) {
+  Widget buildMenuItem(String text, bool active) {
     return Container(
-      margin: const EdgeInsets.symmetric(
-        vertical: 4,
-      ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 6,
-      ),
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: active ? const Color(0xFF0F380F) : Colors.transparent,
       ),
@@ -172,7 +158,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      "COINS: $coins",
+                      "COINS: ${GameData.coins}", // రియల్ కాయిన్స్
                       style: const TextStyle(
                         color: Color(0xFF0F380F),
                         fontSize: 11,
@@ -180,7 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     Text(
-                      "LV:$level",
+                      "LV:${GameData.level}", // రియల్ లెవెల్
                       style: const TextStyle(
                         color: Color(0xFF0F380F),
                         fontSize: 11,
@@ -240,6 +226,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black,
       body: Center(
         child: buildPhone(),
       ),
