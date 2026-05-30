@@ -9,7 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 // ---------------------------------------------------------
-// 8-Bit సౌండ్ ఇంజిన్
+// Sound Engine
 // ---------------------------------------------------------
 class Sfx {
   static final List<AudioPlayer> _players = List.generate(5, (_) => AudioPlayer());
@@ -64,7 +64,6 @@ class Sfx {
   static void outWicket() { final freqs = [300.0, 220.0, 160.0]; for (int i = 0; i < freqs.length; i++) { Future.delayed(Duration(milliseconds: i * 90), () => tone(freqs[i], 0.2, 'sawtooth')); } }
   static void miss() => tone(180, 0.18, 'sawtooth', 0.18);
   static void over() { final freqs = [330.0, 280.0, 220.0]; for (int i = 0; i < freqs.length; i++) { Future.delayed(Duration(milliseconds: i * 120), () => tone(freqs[i], 0.3, 'square', 0.15)); } }
-  
   static void cheer() {
     final freqs = [440.0, 554.0, 659.0, 880.0, 1108.0, 1318.0];
     for (int i = 0; i < freqs.length; i++) {
@@ -74,7 +73,7 @@ class Sfx {
 }
 
 // ---------------------------------------------------------
-// బాల్ రకాలు & గేమ్ స్టేట్స్
+// Ball Types & Game States
 // ---------------------------------------------------------
 class BallType {
   final String id, label; final List<double> br; final double sm, p;
@@ -91,7 +90,7 @@ final List<BallType> BTYPES = [
 enum GameState { BOWLING, FIELDING, RESULT }
 
 // ---------------------------------------------------------
-// కోర్ గేమ్ క్లాస్
+// Core Game Logic (Java 2.5D Style)
 // ---------------------------------------------------------
 class CricketGame extends FlameGame with TapCallbacks {
   final Random rng = Random();
@@ -121,12 +120,12 @@ class CricketGame extends FlameGame with TapCallbacks {
   String bLabelText = '';
   double bLabelTimer = 0;
 
-  // SHOT METER VARIABLES
+  // Shot Meter
   double timingProgress = -1.0; 
   String timingLabel = '';
   double timingTimer = 0.0;
 
-  // FIELDING LOGIC
+  // Fielding 
   Vector2 fieldBallPos = Vector2.zero();
   Vector2 fieldBallVel = Vector2.zero();
   List<Vector2> fielders = [];
@@ -136,17 +135,17 @@ class CricketGame extends FlameGame with TapCallbacks {
   
   bool isAerial = false; 
   double aerialLandingDistance = 0.0; 
+  double hitStartDistance = 0.0;
 
-  // MANUAL RUNNING
+  // Running
   int currentRuns = 0;
-  double runProgress = 0.0; // 0.0 to 1.0
+  double runProgress = 0.0; 
   bool isBatsmanRunning = false;
   double runDirection = 1.0; 
 
   @override
   Future<void> onLoad() async {
     camera.viewport = FixedAspectRatioViewport(aspectRatio: 120 / 160);
-    add(RectangleComponent(size: Vector2(120, 160), paint: Paint()..color = const Color(0xFF8BAC0F)));
 
     bowler = Bowler(); batsman = Batsman(); ball = Ball();
     add(bowler); add(batsman); add(ball);
@@ -170,6 +169,7 @@ class CricketGame extends FlameGame with TapCallbacks {
     BallType bt = pickBType();
     ball.x = 60 + (rng.nextDouble() * 6 - 3);
     ball.y = 35; 
+    ball.z = 8.0; // Release height
     ball.vy = 40.0 + rng.nextDouble() * 30.0; 
     ball.isActive = true; ball.bounced = false;
     ball.bounceAt = bt.br[0] + rng.nextDouble() * (bt.br[1] - bt.br[0]);
@@ -178,14 +178,13 @@ class CricketGame extends FlameGame with TapCallbacks {
     bowler.phase = 'deliver'; bowler.frame = 0;
   }
 
-  // 9 Fielders Coordinates (Bowler, Keeper are drawn separately)
   List<Vector2> getFieldSetting() {
     int type = rng.nextInt(3);
-    if(type == 0) { // Defensive 
+    if(type == 0) { 
        return [Vector2(60, 15), Vector2(30, 25), Vector2(90, 25), Vector2(15, 60), Vector2(105, 60), Vector2(30, 95), Vector2(90, 95), Vector2(45, 45), Vector2(75, 45)];
-    } else if(type == 1) { // Attacking 
+    } else if(type == 1) { 
        return [Vector2(50, 45), Vector2(70, 45), Vector2(40, 60), Vector2(80, 60), Vector2(45, 75), Vector2(75, 75), Vector2(60, 20), Vector2(20, 30), Vector2(100, 30)];
-    } else { // Normal 
+    } else { 
        return [Vector2(60, 25), Vector2(35, 35), Vector2(85, 35), Vector2(25, 60), Vector2(95, 60), Vector2(40, 85), Vector2(80, 85), Vector2(20, 20), Vector2(100, 20)];
     }
   }
@@ -244,7 +243,7 @@ class CricketGame extends FlameGame with TapCallbacks {
     currentRuns = 0; runProgress = 0.0; isBatsmanRunning = false; runDirection = 1.0;
     fielderHasBall = false; ballThrownToCenter = false;
 
-    fieldBallPos = Vector2(60, 60); 
+    fieldBallPos = Vector2(60, 110); 
     
     double angle = (rng.nextDouble() * pi * 1.5) - (pi * 0.75); 
     double speed = 30.0 + (power * 70.0); 
@@ -252,6 +251,7 @@ class CricketGame extends FlameGame with TapCallbacks {
 
     isAerial = power > 0.6 && rng.nextBool(); 
     aerialLandingDistance = isAerial ? (25.0 + power * 45.0) : 0.0; 
+    hitStartDistance = 0.0;
 
     fielders = getFieldSetting();
   }
@@ -278,8 +278,17 @@ class CricketGame extends FlameGame with TapCallbacks {
       }
 
       if (ball.isActive) {
-        if (!ball.bounced && ball.y >= ball.bounceAt) {
-          ball.vy = ball.vy * 0.7 + 20; ball.bounced = true; Sfx.bounce();
+        // Pseudo Z-Axis logic for bowling
+        if (!ball.bounced) {
+          double progress = (ball.y - 35) / (ball.bounceAt - 35);
+          ball.z = 8.0 - (progress * 8.0); // Ball goes down to pitch
+          if (ball.y >= ball.bounceAt) {
+            ball.vy = ball.vy * 0.7 + 20; ball.bounced = true; ball.z = 0; Sfx.bounce();
+          }
+        } else {
+          // Bounce up after pitch
+          double progress = (ball.y - ball.bounceAt) / (120 - ball.bounceAt);
+          ball.z = sin(progress * pi) * 6.0; 
         }
         
         ball.y += ball.vy * dt;
@@ -304,13 +313,18 @@ class CricketGame extends FlameGame with TapCallbacks {
 
       if (!fielderHasBall && !ballThrownToCenter) {
         fieldBallPos += fieldBallVel * dt;
-        double distTraveled = fieldBallPos.distanceTo(center);
-
-        if (isAerial && distTraveled >= aerialLandingDistance) {
-          isAerial = false; Sfx.bounce();
+        hitStartDistance += (fieldBallVel * dt).length;
+        
+        // Z-Axis aerial simulation for fielding
+        if (isAerial) {
+          double p = hitStartDistance / aerialLandingDistance;
+          ball.z = sin(p * pi) * 15.0; // Arc height
+          if (p >= 1.0) {
+            isAerial = false; ball.z = 0; Sfx.bounce();
+          }
         }
 
-        if (distTraveled >= 48) {
+        if (fieldBallPos.distanceTo(center) >= 48) {
           if (isAerial) {
             score += 6; scoreNotifier.value = score; sixes++;
             combo++; if (combo > maxCombo) maxCombo = combo;
@@ -339,12 +353,16 @@ class CricketGame extends FlameGame with TapCallbacks {
         }
       } 
       else if (fielderHasBall) {
+        ball.z = 3.0; // Held by fielder
         throwDelay -= dt;
         if (throwDelay <= 0) { fielderHasBall = false; ballThrownToCenter = true; }
       } 
       else if (ballThrownToCenter) {
         fieldBallPos += (center - fieldBallPos).normalized() * 80 * dt;
+        ball.z = 4.0; // Thrown ball height
+        
         if (fieldBallPos.distanceTo(center) < 3) {
+          ball.z = 0;
           if (isBatsmanRunning && runProgress > 0.05 && runProgress < 0.95) {
             wickets++; wicketNotifier.value = wickets; combo = 0;
             rMsg = 'Run Out!'; Sfx.outWicket(); HapticFeedback.heavyImpact(); endBall(2.0);
@@ -396,180 +414,180 @@ class CricketGame extends FlameGame with TapCallbacks {
   @override
   void render(Canvas canvas) {
     super.render(canvas);
-    final pDark  = Paint()..color = const Color(0xFF0F380F);
-    final pLight = Paint()..color = const Color(0xFF306230);
-    final pDarkStroke = Paint()
-      ..color = const Color(0xFF0F380F)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-    final pThinStroke = Paint()
-      ..color = const Color(0xFF0F380F)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.6;
+
+    // Color Palette for Java 2.5D Style
+    final grassColor = const Color(0xFF4CAF50);
+    final pitchColor = const Color(0xFFD7CCC8);
+    final linePaint = Paint()..color = Colors.white70..strokeWidth = 1.0..isAntiAlias = true;
+    final shadowPaint = Paint()..color = Colors.black26..isAntiAlias = true;
+
+    // Background Grass
+    canvas.drawRect(const Rect.fromLTWH(0, 0, 120, 160), Paint()..color = grassColor);
 
     if (state == GameState.BOWLING || state == GameState.RESULT) {
-      Path pitchFill = Path()..moveTo(47, 33)..lineTo(73, 33)..lineTo(98, 122)..lineTo(22, 122)..close();
-      canvas.drawPath(pitchFill, Paint()..color = const Color(0x1A0F380F));
+      // 2.5D Trapezoid Pitch
+      Path pitchPath = Path()..moveTo(45, 30)..lineTo(75, 30)..lineTo(100, 130)..lineTo(20, 130)..close();
+      canvas.drawPath(pitchPath, Paint()..color = pitchColor..isAntiAlias = true);
 
-      canvas.drawLine(const Offset(47, 33), const Offset(22, 122), pDarkStroke); 
-      canvas.drawLine(const Offset(73, 33), const Offset(98, 122), pDarkStroke); 
-      canvas.drawLine(const Offset(44, 33), const Offset(76, 33), pDarkStroke);
-      canvas.drawLine(const Offset(20, 118), const Offset(100, 118), pDarkStroke);
-      canvas.drawLine(const Offset(20, 122), const Offset(100, 122), pDarkStroke);
-      canvas.drawLine(const Offset(34, 122), const Offset(31, 100), pThinStroke);
-      canvas.drawLine(const Offset(86, 122), const Offset(89, 100), pThinStroke);
+      // Creases
+      canvas.drawLine(const Offset(47, 35), const Offset(73, 35), linePaint);
+      canvas.drawLine(const Offset(25, 120), const Offset(95, 120), linePaint);
+      canvas.drawLine(const Offset(20, 126), const Offset(100, 126), linePaint);
 
-      final textP = TextPaint(style: const TextStyle(fontFamily: 'NokiaPixel', color: Color(0xFF0F380F), fontSize: 6, fontWeight: FontWeight.bold));
+      final textP = TextPaint(style: const TextStyle(fontFamily: 'Arial', color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold));
       if (bLabelTimer > 0) textP.render(canvas, bLabelText, Vector2(60, 50), anchor: Anchor.center);
 
     } else if (state == GameState.FIELDING) {
-      // ── FIELDING VIEW (RADAR) ───────────────────────────────────────
-      canvas.drawCircle(const Offset(60, 60), 48, Paint()..color = const Color(0xFF306230)..style = PaintingStyle.stroke..strokeWidth = 1);
-      canvas.drawCircle(const Offset(60, 60), 25, Paint()..color = const Color(0xFF306230)..style = PaintingStyle.stroke..strokeWidth = 1);
+      // 2.5D Radar View
+      canvas.drawCircle(const Offset(60, 60), 48, Paint()..color = Colors.white30..style = PaintingStyle.stroke..strokeWidth = 1..isAntiAlias = true);
+      canvas.drawCircle(const Offset(60, 60), 25, Paint()..color = Colors.white30..style = PaintingStyle.stroke..strokeWidth = 1..isAntiAlias = true);
       
-      // Pitch Rectangle
-      canvas.drawRect(const Rect.fromLTWH(56, 52, 8, 16), pLight);
+      // Pitch in Radar
+      canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(56, 52, 8, 16), const Radius.circular(2)), Paint()..color = pitchColor);
 
-      // 1. WICKET KEEPER (Stumps వెనకాల)
-      canvas.drawRect(Rect.fromCenter(center: const Offset(60, 71), width: 3, height: 3), pDark);
-      
-      // 2. BOWLER (Bowling crease దగ్గర)
-      canvas.drawRect(Rect.fromCenter(center: const Offset(60, 49), width: 3, height: 3), pDark);
-
-      // 3. 9 FIELDERS
+      // Fielders in Radar
       for (var f in fielders) {
-        canvas.drawRect(Rect.fromCenter(center: Offset(f.x, f.y), width: 3, height: 3), pDark);
+        canvas.drawOval(Rect.fromCenter(center: Offset(f.x, f.y+1), width: 3, height: 1.5), shadowPaint);
+        canvas.drawCircle(Offset(f.x, f.y), 1.5, Paint()..color = Colors.blue..isAntiAlias = true);
       }
 
-      // 4. BATSMEN (పరిస్థితిని బట్టి కదిలే 2 చుక్కలు)
-      // runProgress (0 -> 1) ని బట్టి ఇద్దరూ వ్యతిరేక దిశల్లో పరిగెత్తుతారు
-      double batAy = 66 - (runProgress * 12); // Striker
-      double batBy = 54 + (runProgress * 12); // Non-Striker
-      canvas.drawRect(Rect.fromCenter(center: Offset(58, batAy), width: 3, height: 3), pDark);
-      canvas.drawRect(Rect.fromCenter(center: Offset(62, batBy), width: 3, height: 3), pDark);
+      // Ball in Radar with Z-Axis shadow
+      canvas.drawOval(Rect.fromCenter(center: Offset(fieldBallPos.x, fieldBallPos.y), width: 3, height: 1.5), shadowPaint);
+      canvas.drawCircle(Offset(fieldBallPos.x, fieldBallPos.y - ball.z), 1.5, Paint()..color = Colors.redAccent..isAntiAlias=true);
 
-      // BALL
-      canvas.drawCircle(Offset(fieldBallPos.x, fieldBallPos.y), 1.5, pDark);
+      // Running UI
+      canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(105, 40, 8, 40), const Radius.circular(4)), Paint()..color = Colors.black45);
+      double runnerY = 77 - (runProgress * 34);
+      canvas.drawCircle(Offset(109, runnerY+1), 2.5, Paint()..color = Colors.yellowAccent..isAntiAlias=true);
     }
 
-    // ── SHOT METER UI ────────────────────────────────────────────────
+    // Shot Meter UI
     if (timingTimer > 0) {
-      double mx = 5; double my = 35; double mw = 6; double mh = 60;
-      canvas.drawRect(Rect.fromLTWH(mx, my, mw, mh), Paint()..color = const Color(0xFF306230)..style = PaintingStyle.stroke);
+      double mx = 4; double my = 35; double mw = 6; double mh = 50;
+      
+      // Gradient Background
+      final meterBg = Paint()..shader = const LinearGradient(
+        begin: Alignment.topCenter, end: Alignment.bottomCenter,
+        colors: [Colors.red, Colors.yellow, Colors.green, Colors.yellow, Colors.red],
+      ).createShader(Rect.fromLTWH(mx, my, mw, mh));
+      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(mx, my, mw, mh), const Radius.circular(3)), meterBg);
+
+      // Perfect Zone
       double perfectY = my + (mh * 0.4); double perfectH = mh * 0.2;
-      canvas.drawRect(Rect.fromLTWH(mx, perfectY, mw, perfectH), pDark);
+      canvas.drawRect(Rect.fromLTWH(mx, perfectY, mw, perfectH), Paint()..color = Colors.white30);
+
+      // Indicator
       double indY = my + (timingProgress * mh);
-      canvas.drawLine(Offset(mx - 2, indY), Offset(mx + mw + 2, indY), Paint()..color = const Color(0xFF0F380F)..strokeWidth = 2);
-      final tp = TextPaint(style: const TextStyle(fontFamily: 'NokiaPixel', color: Color(0xFF0F380F), fontSize: 8, fontWeight: FontWeight.bold));
-      tp.render(canvas, timingLabel, Vector2(mx + 12, indY - 4));
+      canvas.drawLine(Offset(mx - 2, indY), Offset(mx + mw + 2, indY), Paint()..color = Colors.white..strokeWidth = 2..isAntiAlias=true);
+      
+      final tp = TextPaint(style: const TextStyle(fontFamily: 'Arial', color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black, blurRadius: 2)]));
+      tp.render(canvas, timingLabel, Vector2(mx + 10, indY - 3));
     }
 
-    if (state == GameState.RESULT) {
-      if (rMsg.isNotEmpty) {
-        canvas.drawRect(const Rect.fromLTWH(25, 60, 70, 20), Paint()..color = const Color(0xFF8BAC0F));
-        canvas.drawRect(const Rect.fromLTWH(25, 60, 70, 20), Paint()..color = const Color(0xFF0F380F)..style = PaintingStyle.stroke..strokeWidth = 2);
-        final rPaint = TextPaint(style: const TextStyle(fontFamily: 'NokiaPixel', color: Color(0xFF0F380F), fontSize: 10, fontWeight: FontWeight.bold));
-        rPaint.render(canvas, rMsg, Vector2(60, 70), anchor: Anchor.center);
-      }
+    // Result Overlay
+    if (state == GameState.RESULT && rMsg.isNotEmpty) {
+      canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(25, 60, 70, 20), const Radius.circular(4)), Paint()..color = Colors.black87);
+      final rPaint = TextPaint(style: const TextStyle(fontFamily: 'Arial', color: Colors.yellowAccent, fontSize: 12, fontWeight: FontWeight.bold));
+      rPaint.render(canvas, rMsg, Vector2(60, 70), anchor: Anchor.center);
     }
   }
 }
 
 // ---------------------------------------------------------
-// Visual Models
+// 2.5D Visual Models (Humanoids with Shadows)
 // ---------------------------------------------------------
-class Ball extends Component with HasGameRef<CricketGame> {
-  double x = 60, y = 35, vy = 0, bounceAt = 0;
-  bool isActive = false, bounced = false;
 
+class Ball extends Component with HasGameRef<CricketGame> {
+  double x = 60, y = 35, z = 0, vy = 0, bounceAt = 0;
+  bool isActive = false, bounced = false;
+  
   @override void render(Canvas canvas) {
     if (!isActive || gameRef.state != GameState.BOWLING) return;
-    canvas.drawCircle(Offset(x, y), 2.0, Paint()..color = const Color(0xFF0F380F));
-    canvas.drawCircle(Offset(x - 0.5, y - 0.5), 0.6, Paint()..color = const Color(0xFF8BAC0F));
+    
+    // Shadow
+    canvas.drawOval(Rect.fromCenter(center: Offset(x, y), width: 4, height: 2), Paint()..color = Colors.black38..isAntiAlias=true);
+    // Ball with height (Z-axis)
+    canvas.drawCircle(Offset(x, y - z), 2.0, Paint()..color = Colors.redAccent..isAntiAlias=true);
+    canvas.drawCircle(Offset(x - 0.5, y - z - 0.5), 0.6, Paint()..color = Colors.white70..isAntiAlias=true);
   }
 }
 
 class Bowler extends Component with HasGameRef<CricketGame> {
-  double x = 60, y = 27; String phase = 'idle'; int frame = 0;
-
+  double x = 60, y = 25; 
+  String phase = 'idle'; int frame = 0;
+  
   @override void render(Canvas canvas) {
     if (gameRef.state != GameState.BOWLING) return;
-    final p = Paint()..color = const Color(0xFF0F380F)..strokeWidth = 1.0..strokeCap = StrokeCap.round;
-    final pFill = Paint()..color = const Color(0xFF0F380F);
+    
+    // Shadow
+    canvas.drawOval(Rect.fromCenter(center: Offset(x, y + 2), width: 6, height: 3), Paint()..color = Colors.black26..isAntiAlias=true);
 
-    canvas.drawCircle(Offset(x, y - 6), 1.5, pFill);
-    if (phase == 'idle') {
-      canvas.drawLine(Offset(x, y - 4.5), Offset(x, y - 0.5), p);     
-      canvas.drawLine(Offset(x, y - 3.5), Offset(x - 2, y - 2), p);   
-      canvas.drawCircle(Offset(x - 2.5, y - 1.8), 1.0, pFill);        
-      canvas.drawLine(Offset(x, y - 3.5), Offset(x + 2, y - 2.5), p); 
-      canvas.drawLine(Offset(x, y - 0.5), Offset(x - 1.5, y + 2.5), p); 
-      canvas.drawLine(Offset(x, y - 0.5), Offset(x + 1.5, y + 2.5), p); 
-    } else if (phase == 'runup') {
-      int f = (frame / 3).floor() % 2;
-      canvas.drawLine(Offset(x, y - 4.5), Offset(x, y - 0.5), p); 
+    final pJersey = Paint()..color = Colors.blue..strokeWidth = 2.0..strokeCap = StrokeCap.round..isAntiAlias=true;
+    final pSkin = Paint()..color = const Color(0xFFFFCC80)..strokeWidth = 1.0..isAntiAlias=true;
+    final pPants = Paint()..color = Colors.white..strokeWidth = 1.5..strokeCap = StrokeCap.round..isAntiAlias=true;
+
+    // Head
+    canvas.drawCircle(Offset(x, y - 5), 1.5, pSkin);
+
+    // Torso
+    canvas.drawLine(Offset(x, y - 3), Offset(x, y), pJersey);
+
+    if (phase == 'idle') { 
+      canvas.drawLine(Offset(x, y), Offset(x - 1, y + 2), pPants); 
+      canvas.drawLine(Offset(x, y), Offset(x + 1, y + 2), pPants);
+    } else if (phase == 'runup') { 
+      int f = (frame / 3).floor() % 2; 
       if (f == 0) {
-        canvas.drawLine(Offset(x, y - 0.5), Offset(x - 2, y + 2.5), p);   
-        canvas.drawLine(Offset(x, y - 0.5), Offset(x + 1, y + 0.5), p);   
-        canvas.drawLine(Offset(x, y - 3.5), Offset(x + 2.5, y - 2), p);   
-        canvas.drawLine(Offset(x, y - 3.5), Offset(x - 1.5, y - 1.5), p); 
+        canvas.drawLine(Offset(x, y), Offset(x - 2, y + 2), pPants); 
+        canvas.drawLine(Offset(x, y), Offset(x + 1, y + 1), pPants); 
       } else {
-        canvas.drawLine(Offset(x, y - 0.5), Offset(x - 1, y + 0.5), p);   
-        canvas.drawLine(Offset(x, y - 0.5), Offset(x + 2, y + 2.5), p);   
-        canvas.drawLine(Offset(x, y - 3.5), Offset(x - 2.5, y - 2), p);   
-        canvas.drawLine(Offset(x, y - 3.5), Offset(x + 1.5, y - 1.5), p); 
+        canvas.drawLine(Offset(x, y), Offset(x - 1, y + 1), pPants); 
+        canvas.drawLine(Offset(x, y), Offset(x + 2, y + 2), pPants); 
       }
-    } else if (phase == 'deliver') {
-      canvas.drawLine(Offset(x, y - 4.5), Offset(x + 1, y - 0.5), p);      
-      canvas.drawLine(Offset(x + 1, y - 0.5), Offset(x - 1.5, y + 2.5), p);
-      canvas.drawLine(Offset(x + 1, y - 0.5), Offset(x + 3, y + 1.5), p);
-      canvas.drawLine(Offset(x, y - 3.5), Offset(x + 2, y - 7.5), p);      
-      canvas.drawLine(Offset(x + 2, y - 7.5), Offset(x + 1, y - 9), p);    
-      canvas.drawLine(Offset(x, y - 3.5), Offset(x - 2.5, y - 2.5), p);
+    } else if (phase == 'deliver') { 
+      canvas.drawLine(Offset(x + 1, y - 2), Offset(x + 3, y - 4), pSkin); // Arm up
+      canvas.drawLine(Offset(x, y), Offset(x - 1, y + 2), pPants); 
     }
   }
 }
 
 class Batsman extends Component with HasGameRef<CricketGame> {
-  double x = 60, y = 115, swingTimer = 0; bool swing = false, stumpBroken = false;
-
+  double x = 60, y = 115, swingTimer = 0; 
+  bool swing = false, stumpBroken = false;
+  
   @override void render(Canvas canvas) {
     if (gameRef.state != GameState.BOWLING) return;
-    final pFill   = Paint()..color = const Color(0xFF0F380F);
-    final pLine   = Paint()..color = const Color(0xFF0F380F)..strokeWidth = 1.5..strokeCap = StrokeCap.round;
-    final pThick  = Paint()..color = const Color(0xFF0F380F)..strokeWidth = 2.5..strokeCap = StrokeCap.round;
-    final pThin   = Paint()..color = const Color(0xFF0F380F)..strokeWidth = 1.0..strokeCap = StrokeCap.round;
+    
+    // Shadow
+    canvas.drawOval(Rect.fromCenter(center: Offset(x + 3, y + 4), width: 10, height: 4), Paint()..color = Colors.black26..isAntiAlias=true);
 
-    if (!stumpBroken) {
-      canvas.drawRect(Rect.fromLTWH(x - 6.5, y - 7, 1.5, 8), pFill);
-      canvas.drawRect(Rect.fromLTWH(x - 4,   y - 7, 1.5, 8), pFill);
-      canvas.drawRect(Rect.fromLTWH(x - 1.5, y - 7, 1.5, 8), pFill);
-      canvas.drawRect(Rect.fromLTWH(x - 7,   y - 8, 3.5, 1.2), pFill); 
-      canvas.drawRect(Rect.fromLTWH(x - 3.5, y - 8, 3.5, 1.2), pFill); 
-    } else {
-      canvas.drawLine(Offset(x - 6, y - 4), Offset(x - 8, y + 1), pLine);
-      canvas.drawLine(Offset(x - 3.5, y - 7), Offset(x - 1, y - 2), pLine);
-      canvas.drawLine(Offset(x - 1, y - 5), Offset(x + 1, y), pLine);
-      canvas.drawRect(Rect.fromLTWH(x - 5, y - 10, 4, 1), pFill);
+    final pJersey = Paint()..color = Colors.blue..strokeWidth = 3.0..strokeCap = StrokeCap.round..isAntiAlias=true;
+    final pPants = Paint()..color = Colors.white..strokeWidth = 2.5..strokeCap = StrokeCap.round..isAntiAlias=true;
+    final pHat = Paint()..color = const Color(0xFF111111)..isAntiAlias=true;
+    final pBat = Paint()..color = const Color(0xFF8D6E63)..strokeWidth = 2.0..strokeCap = StrokeCap.round..isAntiAlias=true;
+    final pStump = Paint()..color = const Color(0xFFFFF176)..strokeWidth = 1.0..isAntiAlias=true;
+
+    // Stumps
+    if (!stumpBroken) { 
+      canvas.drawRect(Rect.fromLTWH(x - 4, y - 5, 1, 6), pStump);
+      canvas.drawRect(Rect.fromLTWH(x - 2, y - 5, 1, 6), pStump);
+      canvas.drawRect(Rect.fromLTWH(x, y - 5, 1, 6), pStump);
+    } else { 
+      canvas.drawRect(Rect.fromLTWH(x - 4, y - 2, 1, 3), pStump);
+      canvas.drawRect(Rect.fromLTWH(x - 2, y, 3, 1), pStump);
     }
 
-    const double bx = 66; final double by = y;
-    canvas.drawCircle(Offset(bx, by - 14), 2.5, pFill);
-    canvas.drawLine(Offset(bx - 2.5, by - 12.5), Offset(bx - 5, by - 12.5), pThin);
-    canvas.drawLine(Offset(bx, by - 11.5), Offset(bx - 1, by - 5.5), pLine);
-    canvas.drawLine(Offset(bx - 1, by - 5.5), Offset(bx - 3, by - 1.5), pLine); 
-    canvas.drawLine(Offset(bx - 3, by - 1.5), Offset(bx - 1.5, by + 1.5), pLine); 
-    canvas.drawLine(Offset(bx - 1, by - 5.5), Offset(bx + 2.5, by - 2), pLine);   
-    canvas.drawLine(Offset(bx + 2.5, by - 2), Offset(bx + 2.5, by + 1.5), pLine); 
-
-    if (!swing) {
-      canvas.drawLine(Offset(bx - 1, by - 10), Offset(bx - 4, by - 8.5), pLine);
-      canvas.drawLine(Offset(bx - 4, by - 8.5), Offset(bx - 5.5, by - 5), pLine); 
-      canvas.drawRect(Rect.fromLTWH(bx - 7.5, by - 5, 3, 6), pFill);
-    } else {
-      canvas.drawLine(Offset(bx - 1, by - 10), Offset(bx + 4, by - 11), pLine); 
-      canvas.drawRect(Rect.fromLTWH(bx - 8, by - 13.5, 8, 3), pFill);  
-      canvas.drawLine(Offset(bx - 0.5, by - 12), Offset(bx + 4, by - 11), pThick); 
+    // Humanoid Body
+    canvas.drawCircle(Offset(x + 4, y - 7), 2.0, pHat); // Helmet
+    canvas.drawLine(Offset(x + 4, y - 4), Offset(x + 4, y), pJersey); // Torso
+    canvas.drawLine(Offset(x + 4, y), Offset(x + 3, y + 3), pPants); // Left Leg
+    canvas.drawLine(Offset(x + 4, y), Offset(x + 6, y + 3), pPants); // Right Leg
+    
+    // Bat
+    if (swing) { 
+      canvas.drawLine(Offset(x + 4, y - 1), Offset(x - 6, y - 1), pBat); 
+    } else { 
+      canvas.drawLine(Offset(x + 5, y - 1), Offset(x + 1, y + 4), pBat); 
     }
   }
 }
