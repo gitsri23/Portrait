@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'game_screen.dart'; // GameScreen ని ఇక్కడ ఇంపోర్ట్ చేశాం
+import 'game_screen.dart'; 
 
 class League {
   final String name;
@@ -73,9 +73,9 @@ class _LeagueScreenState extends State<LeagueScreen> {
   ];
 
   final Map<String, int> bestScores = {
-    "GULLY": 0,
-    "CLUB": 0,
-    "T20": 0,
+    "GULLY": 25,
+    "CLUB": 52,
+    "T20": 78,
     "IPL": 0,
     "WORLD CUP": 0,
   };
@@ -106,11 +106,15 @@ class _LeagueScreenState extends State<LeagueScreen> {
       ),
     );
 
-    // ఇక్కడ leagueName పరామీటర్‌ను పాస్ చేశాం
+    // ఇక్కడ GameScreen కి కావలసిన 3 పరామీటర్లను పంపుతున్నాం
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => GameScreen(leagueName: lg.name),
+        builder: (_) => GameScreen(
+          leagueName: lg.name,
+          balls: lg.balls,
+          wickets: lg.wickets,
+        ),
       ),
     );
   }
