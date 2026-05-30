@@ -73,9 +73,9 @@ class _LeagueScreenState extends State<LeagueScreen> {
   ];
 
   final Map<String, int> bestScores = {
-    "GULLY": 25,
-    "CLUB": 52,
-    "T20": 78,
+    "GULLY": 0,
+    "CLUB": 0,
+    "T20": 0,
     "IPL": 0,
     "WORLD CUP": 0,
   };
@@ -99,19 +99,18 @@ class _LeagueScreenState extends State<LeagueScreen> {
   void startMatch() {
     final lg = leagues[current];
 
-    // స్నాక్‌బార్ చూపిస్తూనే..
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text("Starting ${lg.name}"),
-        duration: const Duration(seconds: 1), // 1 సెకండ్ మాత్రమే ఉండేలా చేశాను
+        duration: const Duration(seconds: 1),
       ),
     );
 
-    // నేరుగా GameScreen కి నావిగేట్ అవుతుంది
+    // ఇక్కడ leagueName పరామీటర్‌ను పాస్ చేశాం
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => const GameScreen(), // మీ game_screen.dart లో const లేకపోతే const తీసేయండి
+        builder: (_) => GameScreen(leagueName: lg.name),
       ),
     );
   }
