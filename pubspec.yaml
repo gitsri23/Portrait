@@ -15,6 +15,7 @@ dependencies:
 
   # Game Engine
   flame: ^1.19.0
+  flame_audio: ^2.1.8
 
   # Audio
   audioplayers: ^6.0.0
