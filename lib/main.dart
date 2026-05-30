@@ -3,7 +3,6 @@ import 'game_data.dart';
 import 'screens/home_screen.dart';
 
 void main() async {
-  // Flutter ఇంజిన్ స్టార్ట్ అయ్యాక SharedPreferences లోడ్ అవ్వడానికి ఇది తప్పనిసరి
   WidgetsFlutterBinding.ensureInitialized();
   await GameData.init(); 
   
@@ -19,7 +18,9 @@ class MyApp extends StatelessWidget {
       title: 'Nokia Cricket Pro',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        fontFamily: 'monospace', // రెట్రో లుక్ కోసం
+        fontFamily: 'NokiaPixel',
+        scaffoldBackgroundColor: Colors.black, // వైట్ ఫ్లాష్ ఆపడానికి ఇది ముఖ్యం!
+        canvasColor: Colors.black,
       ),
       home: const HomeScreen(),
     );
