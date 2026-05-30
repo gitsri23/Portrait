@@ -1,9 +1,114 @@
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:flame/components.dart';
 import 'package:flame/events.dart';
 import 'package:flame/game.dart';
 import 'package:flame/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
+
+// ---------------------------------------------------------
+// WEB AUDIO API తరహా డైనమిక్ సౌండ్స్ (8-bit ఎఫెక్ట్స్)
+// ---------------------------------------------------------
+class Sfx {
+  static final List<AudioPlayer> _players = List.generate(5, (_) => AudioPlayer());
+  static int _pIdx = 0;
+
+  static void tone(double f, double d, [String t = 'square', double v = 0.25]) {
+    try {
+      int sampleRate = 44100;
+      int numSamples = (sampleRate * d).toInt();
+      int byteRate = sampleRate * 2;
+      
+      var bytes = Uint8List(44 + numSamples * 2);
+      var header = ByteData.view(bytes.buffer);
+      
+      bytes[0] = 82; bytes[1] = 73; bytes[2] = 70; bytes[3] = 70; 
+      header.setUint32(4, 36 + numSamples * 2, Endian.little);
+      bytes[8] = 87; bytes[9] = 65; bytes[10] = 86; bytes[11] = 69; 
+      
+      bytes[12] = 102; bytes[13] = 109; bytes[14] = 116; bytes[15] = 32; 
+      header.setUint32(16, 16, Endian.little);
+      header.setUint16(20, 1, Endian.little);
+      header.setUint16(22, 1, Endian.little);
+      header.setUint32(24, sampleRate, Endian.little);
+      header.setUint32(28, byteRate, Endian.little);
+      header.setUint16(32, 2, Endian.little);
+      header.setUint16(34, 16, Endian.little);
+      
+      bytes[36] = 100; bytes[37] = 97; bytes[38] = 116; bytes[39] = 97; 
+      header.setUint32(40, numSamples * 2, Endian.little);
+      
+      for (int i = 0; i < numSamples; ++i) {
+        double time = i / sampleRate;
+        double val = 0.0;
+        if (t == 'square') {
+          val = sin(2 * pi * f * time) >= 0 ? 1.0 : -1.0;
+        } else if (t == 'sawtooth') {
+          val = 2.0 * (time * f - (time * f + 0.5).floor());
+        } else {
+          val = sin(2 * pi * f * time);
+        }
+        
+        double env = exp(-5.0 * time / d); 
+        val = val * env * v;
+        
+        int sample = (val * 32767).toInt().clamp(-32768, 32767);
+        header.setInt16(44 + i * 2, sample, Endian.little);
+      }
+
+      _players[_pIdx].play(BytesSource(bytes));
+      _pIdx = (_pIdx + 1) % _players.length;
+    } catch (e) {
+      // ఇగ్నోర్
+    }
+  }
+
+  static void start() {
+    tone(440, 0.08);
+    Future.delayed(const Duration(milliseconds: 90), () => tone(660, 0.1));
+  }
+  static void bowl() => tone(200, 0.05, 'square', 0.12);
+  static void bounce() => tone(155, 0.04, 'square', 0.09);
+  static void hit() => tone(700, 0.06, 'square', 0.2);
+  static void one() => tone(550, 0.08);
+  static void two() {
+    tone(550, 0.08);
+    Future.delayed(const Duration(milliseconds: 70), () => tone(660, 0.08));
+  }
+  static void three() {
+    final freqs = [550.0, 660.0, 770.0];
+    for (int i = 0; i < freqs.length; i++) {
+      Future.delayed(Duration(milliseconds: i * 55), () => tone(freqs[i], 0.08));
+    }
+  }
+  static void four() {
+    final freqs = [440.0, 554.0, 659.0];
+    for (int i = 0; i < freqs.length; i++) {
+      Future.delayed(Duration(milliseconds: i * 65), () => tone(freqs[i], 0.12));
+    }
+  }
+  static void six() {
+    final freqs = [523.0, 659.0, 784.0, 1047.0];
+    for (int i = 0; i < freqs.length; i++) {
+      Future.delayed(Duration(milliseconds: i * 75), () => tone(freqs[i], 0.15));
+    }
+  }
+  static void outWicket() {
+    final freqs = [300.0, 220.0, 160.0];
+    for (int i = 0; i < freqs.length; i++) {
+      Future.delayed(Duration(milliseconds: i * 90), () => tone(freqs[i], 0.2, 'sawtooth'));
+    }
+  }
+  static void miss() => tone(180, 0.18, 'sawtooth', 0.18);
+  static void over() {
+    final freqs = [330.0, 280.0, 220.0];
+    for (int i = 0; i < freqs.length; i++) {
+      Future.delayed(Duration(milliseconds: i * 120), () => tone(freqs[i], 0.3, 'square', 0.15));
+    }
+  }
+}
+// ---------------------------------------------------------
 
 class BallType {
   final String id, label;
@@ -48,7 +153,7 @@ class CricketGame extends FlameGame with TapCallbacks {
   int wickets = 0;
   int balls = 0;
   
-  // STATS (Achievements కోసం ఇవి యాడ్ చేశాం)
+  // STATS
   int combo = 0;
   int maxCombo = 0;
   int sixes = 0;
@@ -97,6 +202,9 @@ class CricketGame extends FlameGame with TapCallbacks {
     bowler = Bowler(); batsman = Batsman(); ball = Ball(); batsmanStumps = Stumps();
 
     add(batsmanStumps); add(bowler); add(batsman); add(ball);
+    
+    // ఆడియో: స్టార్ట్
+    Sfx.start();
   }
 
   BallType pickBType() {
@@ -111,6 +219,8 @@ class CricketGame extends FlameGame with TapCallbacks {
   void startBowl() {
     if (ball.isActive || bowler.phase != 'idle') return;
     bowler.phase = 'runup'; bowler.frame = 0;
+    // ఆడియో: బౌలర్
+    Sfx.bowl();
   }
 
   void releaseBall() {
@@ -141,22 +251,39 @@ class CricketGame extends FlameGame with TapCallbacks {
 
     if (sh != null) {
       ball.isActive = false;
+      Sfx.hit(); // ఆడియో: హిట్
+
       int runs = sh.runs[0] + rng.nextInt(sh.runs[1] - sh.runs[0] + 1);
 
       combo++;
-      if (combo > maxCombo) maxCombo = combo; // కాంబో రికార్డ్
+      if (combo > maxCombo) maxCombo = combo; 
       if (combo >= 3 && runs < 6) runs = min(runs + 1, 6);
       
       score += runs; balls++; scoreNotifier.value = score;
 
-      if (runs == 6) { sixes++; rMsg = 'SIX!'; } // సిక్సులు ట్రాక్
-      else if (runs == 4) { fours++; rMsg = 'FOUR!'; } // ఫోర్లు ట్రాక్
-      else rMsg = '$runs RUNS';
+      if (runs == 6) { 
+        sixes++; rMsg = 'SIX!'; 
+        Sfx.six(); 
+      } else if (runs == 4) { 
+        fours++; rMsg = 'FOUR!'; 
+        Sfx.four(); 
+      } else if (runs == 3) {
+        rMsg = '3 RUNS';
+        Sfx.three();
+      } else if (runs == 2) {
+        rMsg = '2 RUNS';
+        Sfx.two();
+      } else { 
+        rMsg = '1 RUN';
+        Sfx.one();
+      }
 
       rShot = sh.name; endBall(1.5);
     } else if (by > 139) {
       ball.isActive = false; combo = 0; balls++;
-      rMsg = 'MISSED!'; rShot = ''; endBall(1.0);
+      rMsg = 'MISSED!'; rShot = ''; 
+      Sfx.miss(); // ఆడియో: మిస్
+      endBall(1.0);
     }
   }
 
@@ -183,13 +310,16 @@ class CricketGame extends FlameGame with TapCallbacks {
       if (ball.isActive) {
         if (!ball.bounced && ball.y >= ball.bounceAt) {
           ball.vy = ball.vy * 0.7 + 20; ball.bounced = true;
+          Sfx.bounce(); // ఆడియో: బౌన్స్
         }
         ball.y += ball.vy * dt;
 
         if (ball.y >= 120 && ball.y <= 128 && (ball.x - 60).abs() < 8) {
           ball.isActive = false; wickets++; balls++; combo = 0;
           wicketNotifier.value = wickets; batsmanStumps.broken = true;
-          batsmanStumps.t = 0.6; rMsg = 'OUT! W'; rShot = ''; endBall(1.8);
+          batsmanStumps.t = 0.6; rMsg = 'OUT! W'; rShot = ''; 
+          Sfx.outWicket(); // ఆడియో: ఔట్
+          endBall(1.8);
         } else if (ball.y > 160) {
           ball.isActive = false; combo = 0; balls++; rMsg = 'DOT'; rShot = ''; endBall(0.8);
         }
@@ -206,6 +336,7 @@ class CricketGame extends FlameGame with TapCallbacks {
       if (rTimer <= 0) {
         batsmanStumps.broken = false;
         if (balls >= maxBalls || wickets >= maxWickets) {
+          Sfx.over(); // ఆడియో: మ్యాచ్ ఓవర్
           gameOverNotifier.value = true;
         } else {
           state = GameState.PLAY; ball.isActive = false; bowler.phase = 'idle'; bowlT = 0.8;
@@ -251,26 +382,71 @@ class Ball extends Component {
   }
 }
 
+// ---------------------------------------------
+// అప్‌డేటెడ్ Bowler & Batsman (క్లియర్ విజువల్స్)
+// ---------------------------------------------
 class Bowler extends Component {
-  double x = 60, y = 19; String phase = 'idle'; int frame = 0;
-  @override void render(Canvas canvas) {
+  double x = 60, y = 19;
+  String phase = 'idle';
+  int frame = 0;
+
+  @override
+  void render(Canvas canvas) {
     final p0 = Paint()..color = const Color(0xFF0F380F);
     void p(double px, double py, double w, double h) => canvas.drawRect(Rect.fromLTWH(px, py, w, h), p0);
 
-    if (phase == 'idle') { p(x - 1, y - 7, 3, 2); p(x - 2, y - 5, 5, 4); p(x - 1, y - 1, 1, 3); p(x + 1, y - 1, 1, 3); p(x - 3, y - 4, 2, 1); p(x + 2, y - 4, 2, 1); } 
-    else if (phase == 'runup') { int f = (frame / 4).floor() % 2; p(x - 1, y - 7, 3, 2); p(x - 2, y - 5, 5, 4); if (f == 0) { p(x - 2, y - 1, 1, 3); p(x + 1, y, 1, 3); p(x - 4, y - 3, 2, 1); p(x + 2, y - 5, 2, 1); } else { p(x - 1, y, 1, 3); p(x + 2, y - 1, 1, 3); p(x - 4, y - 5, 2, 1); p(x + 2, y - 3, 2, 1); } } 
-    else if (phase == 'deliver') { p(x - 1, y - 7, 3, 2); p(x - 2, y - 5, 5, 4); p(x - 2, y - 1, 1, 3); p(x + 2, y, 1, 4); p(x + 2, y - 8, 1, 3); p(x + 3, y - 6, 1, 2); }
+    if (phase == 'idle') {
+      p(x - 1, y - 6, 3, 3); // తల
+      p(x - 2, y - 3, 5, 5); // బాడీ
+      p(x - 2, y + 2, 2, 3); // ఎడమ కాలు
+      p(x + 1, y + 2, 2, 3); // కుడి కాలు
+    } else if (phase == 'runup') {
+      int f = (frame / 4).floor() % 2;
+      p(x - 1, y - 6, 3, 3); 
+      p(x - 2, y - 3, 5, 5); 
+      if (f == 0) {
+        p(x - 2, y + 2, 2, 4); 
+        p(x + 1, y + 1, 2, 2); 
+      } else {
+        p(x - 2, y + 1, 2, 2); 
+        p(x + 1, y + 2, 2, 4); 
+      }
+    } else if (phase == 'deliver') {
+      p(x - 1, y - 6, 3, 3); 
+      p(x - 2, y - 3, 5, 5); 
+      p(x + 3, y - 5, 2, 4); // చెయ్యి
+      p(x - 2, y + 2, 2, 3); 
+    }
   }
 }
 
 class Batsman extends Component {
-  double x = 60, y = 126, swingTimer = 0; bool swing = false;
-  @override void render(Canvas canvas) {
-    final p0 = Paint()..color = const Color(0xFF0F380F); final p1 = Paint()..color = const Color(0xFF306230);
+  double x = 60, y = 126, swingTimer = 0;
+  bool swing = false;
+
+  @override
+  void render(Canvas canvas) {
+    final p0 = Paint()..color = const Color(0xFF0F380F); 
+    final p1 = Paint()..color = const Color(0xFF306230); 
     void p(double px, double py, double w, double h, Paint pt) => canvas.drawRect(Rect.fromLTWH(px, py, w, h), pt);
 
-    p(x - 3, y + 4, 8, 1, p1); p(x - 1, y - 9, 4, 3, p0); p(x + 2, y - 8, 1, 2, p0); p(x - 3, y - 6, 7, 5, p0); p(x - 3, y - 1, 3, 6, p0); p(x + 1, y - 1, 3, 6, p0);
-    if (swing) { p(x - 11, y - 3, 9, 2, p0); p(x - 12, y - 5, 2, 5, p0); } else { p(x + 4, y - 3, 2, 9, p0); p(x + 3, y + 4, 4, 2, p0); }
+    p(x - 4, y + 5, 9, 2, p1); // షాడో
+
+    p(x - 2, y - 9, 4, 4, p0); // తల/హెల్మెట్
+    p(x + 2, y - 8, 2, 2, p0); // గ్రిల్
+
+    p(x - 3, y - 5, 6, 6, p0); // బాడీ
+
+    p(x - 2, y + 1, 2, 4, p0); // కాళ్లు
+    p(x + 1, y + 1, 2, 4, p0); 
+    
+    if (swing) {
+      p(x - 10, y - 2, 10, 2, p0); // బ్యాట్ స్వింగ్
+      p(x - 12, y - 3, 2, 4, p0);  
+    } else {
+      p(x + 3, y - 3, 2, 8, p0);   // ఐడిల్ బ్యాట్
+      p(x + 3, y + 5, 3, 2, p0);   
+    }
   }
 }
 
