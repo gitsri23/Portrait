@@ -1,10 +1,118 @@
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:flame/components.dart';
 import 'package:flame/events.dart';
 import 'package:flame/game.dart';
 import 'package:flame/camera.dart';
-import 'package:flame_audio/flame_audio.dart'; // సౌండ్స్ కోసం ఇంపోర్ట్ చేశాం
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
+
+// ---------------------------------------------------------
+// WEB AUDIO API కన్వర్షన్ (DYNAMIC FREQUENCY GENERATOR)
+// ---------------------------------------------------------
+class Sfx {
+  static final List<AudioPlayer> _players = List.generate(5, (_) => AudioPlayer());
+  static int _pIdx = 0;
+
+  // ఫ్రీక్వెన్సీ ఆధారంగా డైనమిక్‌గా WAV ఫైల్ క్రియేట్ చేసి ప్లే చేసే లాజిక్
+  static void tone(double f, double d, [String t = 'square', double v = 0.25]) {
+    try {
+      int sampleRate = 44100;
+      int numSamples = (sampleRate * d).toInt();
+      int byteRate = sampleRate * 2;
+      
+      var bytes = Uint8List(44 + numSamples * 2);
+      var header = ByteData.view(bytes.buffer);
+      
+      // RIFF header
+      bytes[0] = 82; bytes[1] = 73; bytes[2] = 70; bytes[3] = 70; 
+      header.setUint32(4, 36 + numSamples * 2, Endian.little);
+      bytes[8] = 87; bytes[9] = 65; bytes[10] = 86; bytes[11] = 69; 
+      
+      bytes[12] = 102; bytes[13] = 109; bytes[14] = 116; bytes[15] = 32; 
+      header.setUint32(16, 16, Endian.little);
+      header.setUint16(20, 1, Endian.little);
+      header.setUint16(22, 1, Endian.little);
+      header.setUint32(24, sampleRate, Endian.little);
+      header.setUint32(28, byteRate, Endian.little);
+      header.setUint16(32, 2, Endian.little);
+      header.setUint16(34, 16, Endian.little);
+      
+      bytes[36] = 100; bytes[37] = 97; bytes[38] = 116; bytes[39] = 97; 
+      header.setUint32(40, numSamples * 2, Endian.little);
+      
+      for (int i = 0; i < numSamples; ++i) {
+        double time = i / sampleRate;
+        double val = 0.0;
+        if (t == 'square') {
+          val = sin(2 * pi * f * time) >= 0 ? 1.0 : -1.0;
+        } else if (t == 'sawtooth') {
+          val = 2.0 * (time * f - (time * f + 0.5).floor());
+        } else {
+          val = sin(2 * pi * f * time);
+        }
+        
+        // ఎక్స్‌పోనెన్షియల్ ఆడియో డికే (HTML కోడ్ లాగా)
+        double env = exp(-5.0 * time / d); 
+        val = val * env * v;
+        
+        int sample = (val * 32767).toInt().clamp(-32768, 32767);
+        header.setInt16(44 + i * 2, sample, Endian.little);
+      }
+
+      _players[_pIdx].play(BytesSource(bytes));
+      _pIdx = (_pIdx + 1) % _players.length;
+    } catch (e) {
+      // Ignore audio errors
+    }
+  }
+
+  // HTML కోడ్ లోని అవే ఫ్రీక్వెన్సీ ప్యాటర్న్స్
+  static void start() {
+    tone(440, 0.08);
+    Future.delayed(const Duration(milliseconds: 90), () => tone(660, 0.1));
+  }
+  static void bowl() => tone(200, 0.05, 'square', 0.12);
+  static void bounce() => tone(155, 0.04, 'square', 0.09);
+  static void hit() => tone(700, 0.06, 'square', 0.2);
+  static void one() => tone(550, 0.08);
+  static void two() {
+    tone(550, 0.08);
+    Future.delayed(const Duration(milliseconds: 70), () => tone(660, 0.08));
+  }
+  static void three() {
+    final freqs = [550.0, 660.0, 770.0];
+    for (int i = 0; i < freqs.length; i++) {
+      Future.delayed(Duration(milliseconds: i * 55), () => tone(freqs[i], 0.08));
+    }
+  }
+  static void four() {
+    final freqs = [440.0, 554.0, 659.0];
+    for (int i = 0; i < freqs.length; i++) {
+      Future.delayed(Duration(milliseconds: i * 65), () => tone(freqs[i], 0.12));
+    }
+  }
+  static void six() {
+    final freqs = [523.0, 659.0, 784.0, 1047.0];
+    for (int i = 0; i < freqs.length; i++) {
+      Future.delayed(Duration(milliseconds: i * 75), () => tone(freqs[i], 0.15));
+    }
+  }
+  static void outWicket() {
+    final freqs = [300.0, 220.0, 160.0];
+    for (int i = 0; i < freqs.length; i++) {
+      Future.delayed(Duration(milliseconds: i * 90), () => tone(freqs[i], 0.2, 'sawtooth'));
+    }
+  }
+  static void miss() => tone(180, 0.18, 'sawtooth', 0.18);
+  static void over() {
+    final freqs = [330.0, 280.0, 220.0];
+    for (int i = 0; i < freqs.length; i++) {
+      Future.delayed(Duration(milliseconds: i * 120), () => tone(freqs[i], 0.3, 'square', 0.15));
+    }
+  }
+}
+// ---------------------------------------------------------
 
 // --- Ball Types Data ---
 class BallType {
@@ -73,23 +181,6 @@ class CricketGame extends FlameGame with TapCallbacks {
   String bLabelText = '';
   double bLabelTimer = 0;
 
-  // ----------------------------------------------------
-  // SOUND MANAGER LOGIC
-  // ----------------------------------------------------
-  // మీరు assets/audio/ ఫోల్డర్ క్రియేట్ చేసి ఫైల్స్ వేసుకున్నాక ఇది 'true' చేయండి
-  bool soundEnabled = false; 
-
-  void playSfx(String fileName) {
-    if (soundEnabled) {
-      try {
-        FlameAudio.play(fileName);
-      } catch (e) {
-        // ఫైల్ లేకపోతే క్రాష్ అవ్వకుండా ఇగ్నోర్ చేస్తుంది
-      }
-    }
-  }
-  // ----------------------------------------------------
-
   @override
   Future<void> onLoad() async {
     camera.viewport = FixedAspectRatioViewport(aspectRatio: 120 / 160);
@@ -128,8 +219,8 @@ class CricketGame extends FlameGame with TapCallbacks {
     add(batsman);
     add(ball);
     
-    // గేమ్ మొదలైనప్పుడు స్టార్ట్ సౌండ్
-    playSfx('start.mp3'); 
+    // ఆడియో: స్టార్ట్ సౌండ్
+    Sfx.start();
   }
 
   BallType pickBType() {
@@ -147,7 +238,8 @@ class CricketGame extends FlameGame with TapCallbacks {
     bowler.phase = 'runup';
     bowler.frame = 0;
     
-    playSfx('bowl.mp3'); // బౌలర్ పరుగెత్తేటప్పుడు సౌండ్
+    // ఆడియో: బౌలర్ సౌండ్
+    Sfx.bowl();
   }
 
   void releaseBall() {
@@ -184,7 +276,8 @@ class CricketGame extends FlameGame with TapCallbacks {
 
     if (sh != null) {
       ball.isActive = false;
-      playSfx('hit.mp3'); // బ్యాట్‌కి తగిలిన సౌండ్
+      // ఆడియో: బ్యాట్ సౌండ్
+      Sfx.hit();
 
       int runs = sh.runs[0] + rng.nextInt(sh.runs[1] - sh.runs[0] + 1);
 
@@ -195,15 +288,22 @@ class CricketGame extends FlameGame with TapCallbacks {
       balls++;
       scoreNotifier.value = score;
 
+      // ఆడియో: రన్స్ ఆధారంగా సౌండ్
       if (runs == 6) {
-        playSfx('six.mp3');
+        Sfx.six();
         rMsg = 'SIX!';
       } else if (runs == 4) {
-        playSfx('four.mp3');
+        Sfx.four();
         rMsg = 'FOUR!';
+      } else if (runs == 3) {
+        Sfx.three();
+        rMsg = '3 RUNS';
+      } else if (runs == 2) {
+        Sfx.two();
+        rMsg = '2 RUNS';
       } else {
-        playSfx('runs.mp3'); // 1, 2 లేదా 3 రన్స్ కి సౌండ్
-        rMsg = '$runs RUNS';
+        Sfx.one();
+        rMsg = '1 RUN';
       }
 
       rShot = sh.name;
@@ -212,7 +312,10 @@ class CricketGame extends FlameGame with TapCallbacks {
       ball.isActive = false;
       combo = 0; balls++;
       rMsg = 'MISSED!'; rShot = '';
-      playSfx('miss.mp3'); // బ్యాట్ మిస్ అయినప్పుడు సౌండ్
+      
+      // ఆడియో: మిస్ సౌండ్
+      Sfx.miss();
+      
       endBall(1.0);
     }
   }
@@ -247,7 +350,8 @@ class CricketGame extends FlameGame with TapCallbacks {
         if (!ball.bounced && ball.y >= ball.bounceAt) {
           ball.vy = ball.vy * 0.7 + 20; 
           ball.bounced = true;
-          playSfx('bounce.mp3'); // బాల్ పిచ్ పైన పడినప్పుడు సౌండ్
+          // ఆడియో: బౌన్స్ సౌండ్
+          Sfx.bounce();
         }
         ball.y += ball.vy * dt;
 
@@ -258,7 +362,10 @@ class CricketGame extends FlameGame with TapCallbacks {
           batsmanStumps.broken = true;
           batsmanStumps.t = 0.6;
           rMsg = 'OUT! W'; rShot = '';
-          playSfx('out.mp3'); // వికెట్ పడినప్పుడు సౌండ్
+          
+          // ఆడియో: ఔట్ సౌండ్
+          Sfx.outWicket();
+          
           endBall(1.8);
         }
         else if (ball.y > 160) {
@@ -281,7 +388,8 @@ class CricketGame extends FlameGame with TapCallbacks {
       if (rTimer <= 0) {
         batsmanStumps.broken = false;
         if (balls >= maxBalls || wickets >= maxWickets) {
-          playSfx('over.mp3'); // మ్యాచ్ పూర్తయినప్పుడు సౌండ్
+          // ఆడియో: మ్యాచ్ అయిపోతే సౌండ్
+          Sfx.over();
           gameOverNotifier.value = true;
         } else {
           state = GameState.PLAY;
