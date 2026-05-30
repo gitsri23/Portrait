@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'game_screen.dart'; 
+import '../game_data.dart';
 
 class League {
   final String name;
@@ -30,55 +31,12 @@ class _LeagueScreenState extends State<LeagueScreen> {
   int current = 0;
 
   final leagues = const [
-    League(
-      name: "GULLY",
-      subtitle: "Street Cricket",
-      balls: 6,
-      wickets: 1,
-      reward: 1.0,
-      stars: 1,
-    ),
-    League(
-      name: "CLUB",
-      subtitle: "Club Match",
-      balls: 12,
-      wickets: 3,
-      reward: 1.2,
-      stars: 2,
-    ),
-    League(
-      name: "T20",
-      subtitle: "League Cricket",
-      balls: 20,
-      wickets: 5,
-      reward: 1.5,
-      stars: 3,
-    ),
-    League(
-      name: "IPL",
-      subtitle: "Premier League",
-      balls: 24,
-      wickets: 7,
-      reward: 1.8,
-      stars: 4,
-    ),
-    League(
-      name: "WORLD CUP",
-      subtitle: "Championship",
-      balls: 30,
-      wickets: 10,
-      reward: 2.0,
-      stars: 5,
-    ),
+    League(name: "GULLY", subtitle: "Street Cricket", balls: 6, wickets: 1, reward: 1.0, stars: 1),
+    League(name: "CLUB", subtitle: "Club Match", balls: 12, wickets: 3, reward: 1.2, stars: 2),
+    League(name: "T20", subtitle: "League Cricket", balls: 20, wickets: 5, reward: 1.5, stars: 3),
+    League(name: "IPL", subtitle: "Premier League", balls: 24, wickets: 7, reward: 1.8, stars: 4),
+    League(name: "WORLD CUP", subtitle: "Championship", balls: 30, wickets: 10, reward: 2.0, stars: 5),
   ];
-
-  final Map<String, int> bestScores = {
-    "GULLY": 25,
-    "CLUB": 52,
-    "T20": 78,
-    "IPL": 0,
-    "WORLD CUP": 0,
-  };
 
   void prevLeague() {
     if (current > 0) {
@@ -96,7 +54,7 @@ class _LeagueScreenState extends State<LeagueScreen> {
     }
   }
 
-  void startMatch() {
+  void startMatch() async {
     final lg = leagues[current];
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -106,7 +64,8 @@ class _LeagueScreenState extends State<LeagueScreen> {
       ),
     );
 
-    Navigator.push(
+    // మ్యాచ్ స్టార్ట్ అవుతుంది. గేమ్ ఆడి రాగానే కింద ఉన్న setState రన్ అవుతుంది
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => GameScreen(
@@ -116,6 +75,9 @@ class _LeagueScreenState extends State<LeagueScreen> {
         ),
       ),
     );
+    
+    // స్కోర్ అప్‌డేట్ అవ్వడానికి రిఫ్రెష్
+    setState(() {}); 
   }
 
   Widget starRow(int count) {
@@ -125,11 +87,8 @@ class _LeagueScreenState extends State<LeagueScreen> {
         5,
         (index) {
           bool active = index < count;
-
           return Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 2,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 2),
             child: Icon(
               Icons.star,
               size: 18,
@@ -146,6 +105,7 @@ class _LeagueScreenState extends State<LeagueScreen> {
     final lg = leagues[current];
 
     return Scaffold(
+      backgroundColor: Colors.black,
       body: Center(
         child: Container(
           width: 320,
@@ -154,10 +114,7 @@ class _LeagueScreenState extends State<LeagueScreen> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(32),
             gradient: const LinearGradient(
-              colors: [
-                Color(0xFF555555),
-                Color(0xFF222222),
-              ],
+              colors: [Color(0xFF555555), Color(0xFF222222)],
             ),
           ),
           child: Column(
@@ -165,12 +122,7 @@ class _LeagueScreenState extends State<LeagueScreen> {
               const SizedBox(height: 15),
               const Text(
                 "NOKIA",
-                style: TextStyle(
-                  color: Color(0xFF3A94D4),
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 4,
-                ),
+                style: TextStyle(color: Color(0xFF3A94D4), fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 4),
               ),
               const SizedBox(height: 20),
               Container(
@@ -180,109 +132,41 @@ class _LeagueScreenState extends State<LeagueScreen> {
                 decoration: BoxDecoration(
                   color: const Color(0xFF8BAC0F),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Colors.black,
-                    width: 4,
-                  ),
+                  border: Border.all(color: Colors.black, width: 4),
                 ),
                 child: Column(
                   children: [
-                    const Text(
-                      "SELECT LEAGUE",
-                      style: TextStyle(
-                        color: Color(0xFF0F380F),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
+                    const Text("SELECT LEAGUE", style: TextStyle(color: Color(0xFF0F380F), fontWeight: FontWeight.bold, fontSize: 16)),
                     const SizedBox(height: 10),
-                    Container(
-                      height: 2,
-                      color: const Color(0xFF306230),
-                    ),
+                    Container(height: 2, color: const Color(0xFF306230)),
                     const SizedBox(height: 20),
-                    Text(
-                      lg.name,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Color(0xFF0F380F),
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    Text(lg.name, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF0F380F), fontSize: 22, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 10),
-                    Text(
-                      lg.subtitle,
-                      style: const TextStyle(
-                        color: Color(0xFF306230),
-                        fontSize: 12,
-                      ),
-                    ),
+                    Text(lg.subtitle, style: const TextStyle(color: Color(0xFF306230), fontSize: 12)),
                     const SizedBox(height: 18),
                     starRow(lg.stars),
                     const SizedBox(height: 20),
-                    Text(
-                      "BALLS : ${lg.balls}",
-                      style: const TextStyle(
-                        color: Color(0xFF0F380F),
-                        fontSize: 12,
-                      ),
-                    ),
+                    Text("BALLS : ${lg.balls}", style: const TextStyle(color: Color(0xFF0F380F), fontSize: 12)),
                     const SizedBox(height: 8),
-                    Text(
-                      "WICKETS : ${lg.wickets}",
-                      style: const TextStyle(
-                        color: Color(0xFF0F380F),
-                        fontSize: 12,
-                      ),
-                    ),
+                    Text("WICKETS : ${lg.wickets}", style: const TextStyle(color: Color(0xFF0F380F), fontSize: 12)),
                     const SizedBox(height: 8),
-                    Text(
-                      "REWARD : ${lg.reward}x",
-                      style: const TextStyle(
-                        color: Color(0xFF0F380F),
-                        fontSize: 12,
-                      ),
-                    ),
+                    Text("REWARD : ${lg.reward}x", style: const TextStyle(color: Color(0xFF0F380F), fontSize: 12)),
                     const SizedBox(height: 25),
-                    Container(
-                      height: 2,
-                      color: const Color(0xFF306230),
-                    ),
+                    Container(height: 2, color: const Color(0xFF306230)),
                     const SizedBox(height: 18),
-                    Text(
-                      "BEST SCORE",
-                      style: const TextStyle(
-                        color: Color(0xFF306230),
-                        fontSize: 10,
-                      ),
-                    ),
+                    const Text("BEST SCORE", style: TextStyle(color: Color(0xFF306230), fontSize: 10)),
                     const SizedBox(height: 10),
+                    
+                    // రియల్ బెస్ట్ స్కోర్ చూపిస్తున్నాం
                     Text(
-                      "${bestScores[lg.name] ?? 0}",
-                      style: const TextStyle(
-                        color: Color(0xFF0F380F),
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      "${GameData.getBestScore(lg.name)}",
+                      style: const TextStyle(color: Color(0xFF0F380F), fontSize: 22, fontWeight: FontWeight.bold),
                     ),
+                    
                     const Spacer(),
-                    const Text(
-                      "◄ ► CHANGE",
-                      style: TextStyle(
-                        color: Color(0xFF306230),
-                        fontSize: 10,
-                      ),
-                    ),
+                    const Text("◄ ► CHANGE", style: TextStyle(color: Color(0xFF306230), fontSize: 10)),
                     const SizedBox(height: 6),
-                    const Text(
-                      "5 START",
-                      style: TextStyle(
-                        color: Color(0xFF0F380F),
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    const Text("5 START", style: TextStyle(color: Color(0xFF0F380F), fontSize: 12, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
@@ -290,18 +174,9 @@ class _LeagueScreenState extends State<LeagueScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  ElevatedButton(
-                    onPressed: prevLeague,
-                    child: const Icon(Icons.arrow_back),
-                  ),
-                  ElevatedButton(
-                    onPressed: startMatch,
-                    child: const Text("5"),
-                  ),
-                  ElevatedButton(
-                    onPressed: nextLeague,
-                    child: const Icon(Icons.arrow_forward),
-                  ),
+                  ElevatedButton(onPressed: prevLeague, child: const Icon(Icons.arrow_back)),
+                  ElevatedButton(onPressed: startMatch, child: const Text("5")),
+                  ElevatedButton(onPressed: nextLeague, child: const Icon(Icons.arrow_forward)),
                 ],
               ),
               const SizedBox(height: 15),
