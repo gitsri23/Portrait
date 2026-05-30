@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'game_screen.dart'; // GameScreen ని ఇక్కడ ఇంపోర్ట్ చేశాం
 
 class League {
   final String name;
@@ -26,11 +27,9 @@ class LeagueScreen extends StatefulWidget {
 }
 
 class _LeagueScreenState extends State<LeagueScreen> {
-
   int current = 0;
 
   final leagues = const [
-
     League(
       name: "GULLY",
       subtitle: "Street Cricket",
@@ -39,7 +38,6 @@ class _LeagueScreenState extends State<LeagueScreen> {
       reward: 1.0,
       stars: 1,
     ),
-
     League(
       name: "CLUB",
       subtitle: "Club Match",
@@ -48,7 +46,6 @@ class _LeagueScreenState extends State<LeagueScreen> {
       reward: 1.2,
       stars: 2,
     ),
-
     League(
       name: "T20",
       subtitle: "League Cricket",
@@ -57,7 +54,6 @@ class _LeagueScreenState extends State<LeagueScreen> {
       reward: 1.5,
       stars: 3,
     ),
-
     League(
       name: "IPL",
       subtitle: "Premier League",
@@ -66,7 +62,6 @@ class _LeagueScreenState extends State<LeagueScreen> {
       reward: 1.8,
       stars: 4,
     ),
-
     League(
       name: "WORLD CUP",
       subtitle: "Championship",
@@ -77,16 +72,16 @@ class _LeagueScreenState extends State<LeagueScreen> {
     ),
   ];
 
-  final Map<String,int> bestScores = {
-    "GULLY":25,
-    "CLUB":52,
-    "T20":78,
-    "IPL":0,
-    "WORLD CUP":0,
+  final Map<String, int> bestScores = {
+    "GULLY": 25,
+    "CLUB": 52,
+    "T20": 78,
+    "IPL": 0,
+    "WORLD CUP": 0,
   };
 
   void prevLeague() {
-    if(current > 0){
+    if (current > 0) {
       setState(() {
         current--;
       });
@@ -94,7 +89,7 @@ class _LeagueScreenState extends State<LeagueScreen> {
   }
 
   void nextLeague() {
-    if(current < leagues.length - 1){
+    if (current < leagues.length - 1) {
       setState(() {
         current++;
       });
@@ -102,43 +97,41 @@ class _LeagueScreenState extends State<LeagueScreen> {
   }
 
   void startMatch() {
-
     final lg = leagues[current];
 
+    // స్నాక్‌బార్ చూపిస్తూనే..
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          "Starting ${lg.name}"
-        ),
+        content: Text("Starting ${lg.name}"),
+        duration: const Duration(seconds: 1), // 1 సెకండ్ మాత్రమే ఉండేలా చేశాను
       ),
     );
 
-    // NEXT:
-    // Navigate to GameScreen
+    // నేరుగా GameScreen కి నావిగేట్ అవుతుంది
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const GameScreen(), // మీ game_screen.dart లో const లేకపోతే const తీసేయండి
+      ),
+    );
   }
 
-  Widget starRow(int count){
-
+  Widget starRow(int count) {
     return Row(
-      mainAxisAlignment:
-          MainAxisAlignment.center,
+      mainAxisAlignment: MainAxisAlignment.center,
       children: List.generate(
         5,
         (index) {
-
           bool active = index < count;
 
           return Padding(
-            padding:
-                const EdgeInsets.symmetric(
+            padding: const EdgeInsets.symmetric(
               horizontal: 2,
             ),
             child: Icon(
               Icons.star,
               size: 18,
-              color: active
-                  ? const Color(0xFFC4E060)
-                  : const Color(0xFF306230),
+              color: active ? const Color(0xFFC4E060) : const Color(0xFF306230),
             ),
           );
         },
@@ -148,35 +141,26 @@ class _LeagueScreenState extends State<LeagueScreen> {
 
   @override
   Widget build(BuildContext context) {
-
     final lg = leagues[current];
 
     return Scaffold(
       body: Center(
         child: Container(
-
           width: 320,
           height: 620,
-
           padding: const EdgeInsets.all(20),
-
           decoration: BoxDecoration(
-            borderRadius:
-                BorderRadius.circular(32),
-            gradient:
-                const LinearGradient(
+            borderRadius: BorderRadius.circular(32),
+            gradient: const LinearGradient(
               colors: [
                 Color(0xFF555555),
                 Color(0xFF222222),
               ],
             ),
           ),
-
           child: Column(
             children: [
-
               const SizedBox(height: 15),
-
               const Text(
                 "NOKIA",
                 style: TextStyle(
@@ -186,204 +170,138 @@ class _LeagueScreenState extends State<LeagueScreen> {
                   letterSpacing: 4,
                 ),
               ),
-
               const SizedBox(height: 20),
-
               Container(
-
                 width: 250,
                 height: 350,
-
-                padding:
-                    const EdgeInsets.all(14),
-
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color:
-                      const Color(0xFF8BAC0F),
-                  borderRadius:
-                      BorderRadius.circular(8),
+                  color: const Color(0xFF8BAC0F),
+                  borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                     color: Colors.black,
                     width: 4,
                   ),
                 ),
-
                 child: Column(
-
                   children: [
-
                     const Text(
                       "SELECT LEAGUE",
                       style: TextStyle(
-                        color:
-                            Color(0xFF0F380F),
-                        fontWeight:
-                            FontWeight.bold,
+                        color: Color(0xFF0F380F),
+                        fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
                     ),
-
                     const SizedBox(height: 10),
-
                     Container(
                       height: 2,
-                      color:
-                          const Color(0xFF306230),
+                      color: const Color(0xFF306230),
                     ),
-
                     const SizedBox(height: 20),
-
                     Text(
                       lg.name,
-                      textAlign:
-                          TextAlign.center,
+                      textAlign: TextAlign.center,
                       style: const TextStyle(
-                        color:
-                            Color(0xFF0F380F),
+                        color: Color(0xFF0F380F),
                         fontSize: 22,
-                        fontWeight:
-                            FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-
                     const SizedBox(height: 10),
-
                     Text(
                       lg.subtitle,
                       style: const TextStyle(
-                        color:
-                            Color(0xFF306230),
+                        color: Color(0xFF306230),
                         fontSize: 12,
                       ),
                     ),
-
                     const SizedBox(height: 18),
-
                     starRow(lg.stars),
-
                     const SizedBox(height: 20),
-
                     Text(
                       "BALLS : ${lg.balls}",
-                      style:
-                          const TextStyle(
-                        color:
-                            Color(0xFF0F380F),
+                      style: const TextStyle(
+                        color: Color(0xFF0F380F),
                         fontSize: 12,
                       ),
                     ),
-
                     const SizedBox(height: 8),
-
                     Text(
                       "WICKETS : ${lg.wickets}",
-                      style:
-                          const TextStyle(
-                        color:
-                            Color(0xFF0F380F),
+                      style: const TextStyle(
+                        color: Color(0xFF0F380F),
                         fontSize: 12,
                       ),
                     ),
-
                     const SizedBox(height: 8),
-
                     Text(
                       "REWARD : ${lg.reward}x",
-                      style:
-                          const TextStyle(
-                        color:
-                            Color(0xFF0F380F),
+                      style: const TextStyle(
+                        color: Color(0xFF0F380F),
                         fontSize: 12,
                       ),
                     ),
-
                     const SizedBox(height: 25),
-
                     Container(
                       height: 2,
-                      color:
-                          const Color(0xFF306230),
+                      color: const Color(0xFF306230),
                     ),
-
                     const SizedBox(height: 18),
-
                     Text(
                       "BEST SCORE",
-                      style:
-                          const TextStyle(
-                        color:
-                            Color(0xFF306230),
+                      style: const TextStyle(
+                        color: Color(0xFF306230),
                         fontSize: 10,
                       ),
                     ),
-
                     const SizedBox(height: 10),
-
                     Text(
                       "${bestScores[lg.name] ?? 0}",
-                      style:
-                          const TextStyle(
-                        color:
-                            Color(0xFF0F380F),
+                      style: const TextStyle(
+                        color: Color(0xFF0F380F),
                         fontSize: 22,
-                        fontWeight:
-                            FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-
                     const Spacer(),
-
                     const Text(
                       "◄ ► CHANGE",
                       style: TextStyle(
-                        color:
-                            Color(0xFF306230),
+                        color: Color(0xFF306230),
                         fontSize: 10,
                       ),
                     ),
-
                     const SizedBox(height: 6),
-
                     const Text(
                       "5 START",
                       style: TextStyle(
-                        color:
-                            Color(0xFF0F380F),
+                        color: Color(0xFF0F380F),
                         fontSize: 12,
-                        fontWeight:
-                            FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ],
                 ),
               ),
-
               const Spacer(),
-
               Row(
-                mainAxisAlignment:
-                    MainAxisAlignment.spaceEvenly,
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-
                   ElevatedButton(
                     onPressed: prevLeague,
-                    child:
-                        const Icon(Icons.arrow_back),
+                    child: const Icon(Icons.arrow_back),
                   ),
-
                   ElevatedButton(
                     onPressed: startMatch,
                     child: const Text("5"),
                   ),
-
                   ElevatedButton(
                     onPressed: nextLeague,
-                    child:
-                        const Icon(Icons.arrow_forward),
+                    child: const Icon(Icons.arrow_forward),
                   ),
                 ],
               ),
-
               const SizedBox(height: 15),
             ],
           ),
