@@ -38,29 +38,39 @@ jobs:
             --platforms=android
           rm -rf test
 
-      # ─── 🧠 INJECT NATIVE KOTLIN & CAMERA FEED ───
+      # ─── 🧠 INJECT NATIVE KOTLIN & RECORDING FEED ───
       - name: Inject Native Camera and Render Scripts
         run: |
           mkdir -p android/app/src/main/kotlin/blur/bokeh/and/
           
-          # Inject MainActivity.kt with Real Camera2 API Feed & Permissions
+          # Inject MainActivity.kt with Real Camera2 API Feed, Recording & Gallery Save
           cat << 'EOF' > android/app/src/main/kotlin/blur/bokeh/and/MainActivity.kt
           package blur.bokeh.and
 
           import android.Manifest
+          import android.content.ContentValues
           import android.content.pm.PackageManager
           import android.hardware.camera2.*
+          import android.media.MediaRecorder
+          import android.os.Environment
+          import android.provider.MediaStore
           import android.view.Surface
           import io.flutter.embedding.android.FlutterActivity
           import io.flutter.embedding.engine.FlutterEngine
           import io.flutter.plugin.common.MethodChannel
           import io.flutter.view.TextureRegistry
+          import java.io.File
 
           class MainActivity: FlutterActivity() {
               private val CHANNEL = "blur.bokeh.and/camera"
               private var textureEntry: TextureRegistry.SurfaceTextureEntry? = null
               private var flutterResult: MethodChannel.Result? = null
               private var myFlutterEngine: FlutterEngine? = null
+              
+              private var cameraDevice: CameraDevice? = null
+              private var mediaRecorder: MediaRecorder? = null
+              private var videoFile: File? = null
+              private var isRecording = false
 
               override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
                   super.configureFlutterEngine(flutterEngine)
@@ -70,71 +80,109 @@ jobs:
                       when (call.method) {
                           "initializeCamera" -> {
                               flutterResult = result
-                              // 1. Request Camera Permission Runtime
-                              if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                                  requestPermissions(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO), 101)
+                              if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED ||
+                                  checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                                  requestPermissions(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO, Manifest.permission.WRITE_EXTERNAL_STORAGE), 101)
                               } else {
                                   startPhysicalCamera()
                               }
                           }
+                          "toggleRecord" -> {
+                              val start = call.argument<Boolean>("start") ?: false
+                              if (start) startRecording() else stopRecording()
+                              result.success(null)
+                          }
                           "updateDepth" -> result.success(null)
                           "updateColor" -> result.success(null)
-                          "toggleRecord" -> result.success(null)
                           else -> result.notImplemented()
                       }
                   }
               }
 
-              // 2. Handle Permission Result
               override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
                   super.onRequestPermissionsResult(requestCode, permissions, grantResults)
                   if (requestCode == 101 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                       startPhysicalCamera()
-                  } else {
-                      flutterResult?.error("PERMISSION_DENIED", "Camera access is required", null)
                   }
               }
 
-              // 3. Connect Hardware Camera Lens to Flutter Texture
               private fun startPhysicalCamera() {
                   try {
                       textureEntry = myFlutterEngine?.renderer?.createSurfaceTexture()
                       val surfaceTexture = textureEntry?.surfaceTexture()
-                      // Set HD Preview size
                       surfaceTexture?.setDefaultBufferSize(1080, 1920)
-                      val surface = Surface(surfaceTexture)
+                      val previewSurface = Surface(surfaceTexture)
 
                       val manager = getSystemService(CAMERA_SERVICE) as CameraManager
-                      // Automatically pick the back camera
                       val cameraId = manager.cameraIdList.firstOrNull {
                           manager.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
                       } ?: manager.cameraIdList[0]
 
                       manager.openCamera(cameraId, object : CameraDevice.StateCallback() {
                           override fun onOpened(camera: CameraDevice) {
+                              cameraDevice = camera
                               val requestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
-                              requestBuilder.addTarget(surface)
+                              requestBuilder.addTarget(previewSurface)
                               
-                              camera.createCaptureSession(listOf(surface), object : CameraCaptureSession.StateCallback() {
+                              camera.createCaptureSession(listOf(previewSurface), object : CameraCaptureSession.StateCallback() {
                                   override fun onConfigured(session: CameraCaptureSession) {
-                                      // Start pushing live frames to Flutter
                                       session.setRepeatingRequest(requestBuilder.build(), null, null)
-                                      
-                                      // Send texture ID back to stop the Flutter loading spinner
                                       flutterResult?.success(textureEntry?.id())
                                   }
-                                  override fun onConfigureFailed(session: CameraCaptureSession) {
-                                      flutterResult?.error("CAMERA_FAILED", "Failed to lock camera feed", null)
-                                  }
+                                  override fun onConfigureFailed(session: CameraCaptureSession) {}
                               }, null)
                           }
                           override fun onDisconnected(camera: CameraDevice) { camera.close() }
                           override fun onError(camera: CameraDevice, error: Int) { camera.close() }
                       }, null)
-                  } catch (e: SecurityException) {
-                      flutterResult?.error("SECURITY_ERROR", e.message, null)
                   } catch (e: Exception) {
                       flutterResult?.error("CAMERA_ERROR", e.message, null)
+                  }
+              }
+
+              private fun startRecording() {
+                  if (cameraDevice == null) return
+                  val videoDir = getExternalFilesDir(Environment.DIRECTORY_MOVIES)
+                  videoFile = File(videoDir, "Bokeh_${System.currentTimeMillis()}.mp4")
+
+                  mediaRecorder = MediaRecorder().apply {
+                      setAudioSource(MediaRecorder.AudioSource.MIC)
+                      setVideoSource(MediaRecorder.VideoSource.SURFACE)
+                      setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                      setOutputFile(videoFile!!.absolutePath)
+                      setVideoEncoder(MediaRecorder.VideoEncoder.H264)
+                      setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                      setVideoSize(1080, 1920)
+                      setVideoFrameRate(30)
+                      setVideoEncodingBitRate(10000000)
+                      prepare()
+                      start()
+                  }
+                  isRecording = true
+              }
+
+              private fun stopRecording() {
+                  if (!isRecording) return
+                  mediaRecorder?.apply {
+                      stop()
+                      reset()
+                      release()
+                  }
+                  mediaRecorder = null
+                  isRecording = false
+
+                  // Save to Public Gallery
+                  videoFile?.let { file ->
+                      val values = ContentValues().apply {
+                          put(MediaStore.Video.Media.DISPLAY_NAME, file.name)
+                          put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                          put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_DCIM + "/BokehCamera")
+                      }
+                      contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)?.let { uri ->
+                          contentResolver.openOutputStream(uri)?.use { outStream ->
+                              file.inputStream().use { inStream -> inStream.copyTo(outStream) }
+                          }
+                      }
                   }
               }
           }
