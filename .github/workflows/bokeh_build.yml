@@ -38,35 +38,19 @@ jobs:
             --platforms=android
           rm -rf test
 
-      # ─── 🧠 INJECT NATIVE KOTLIN & RENDERER CODE ───
+      # ─── 🧠 INJECT NATIVE KOTLIN & CAMERA FEED ───
       - name: Inject Native Camera and Render Scripts
         run: |
           mkdir -p android/app/src/main/kotlin/blur/bokeh/and/
           
-          # 1. Create CinematicGLRenderer.kt
-          cat << 'EOF' > android/app/src/main/kotlin/blur/bokeh/and/CinematicGLRenderer.kt
-          package blur.bokeh.and
-
-          class CinematicGLRenderer {
-              private var blurIntensity: Float = 0.5f
-              private var colorBalance: Float = 1.0f
-
-              fun setBlur(value: Float) { blurIntensity = value }
-              fun setColor(value: Float) { colorBalance = value }
-              
-              // Core OpenGL setup and rendering hooks will go here
-              fun render() {
-                  // Pipeline execution
-              }
-          }
-          EOF
-
-          # 2. Create MainActivity.kt with Method Channels
+          # Inject MainActivity.kt with Real Camera2 API Feed & Permissions
           cat << 'EOF' > android/app/src/main/kotlin/blur/bokeh/and/MainActivity.kt
           package blur.bokeh.and
 
-          import android.graphics.SurfaceTexture
-          import android.os.Bundle
+          import android.Manifest
+          import android.content.pm.PackageManager
+          import android.hardware.camera2.*
+          import android.view.Surface
           import io.flutter.embedding.android.FlutterActivity
           import io.flutter.embedding.engine.FlutterEngine
           import io.flutter.plugin.common.MethodChannel
@@ -75,45 +59,82 @@ jobs:
           class MainActivity: FlutterActivity() {
               private val CHANNEL = "blur.bokeh.and/camera"
               private var textureEntry: TextureRegistry.SurfaceTextureEntry? = null
-              private val renderer = CinematicGLRenderer()
+              private var flutterResult: MethodChannel.Result? = null
+              private var myFlutterEngine: FlutterEngine? = null
 
               override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
                   super.configureFlutterEngine(flutterEngine)
+                  myFlutterEngine = flutterEngine
 
                   MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
                       when (call.method) {
                           "initializeCamera" -> {
-                              // Registering the native texture with Flutter UI
-                              textureEntry = flutterEngine.renderer.createSurfaceTexture()
-                              val surfaceTexture = textureEntry?.surfaceTexture()
-                              val textureId = textureEntry?.id()
-
-                              if (surfaceTexture != null && textureId != null) {
-                                  // Standard 1080p camera buffer setup
-                                  surfaceTexture.setDefaultBufferSize(1080, 1920)
-                                  
-                                  // Send texture ID back to Flutter to remove loading screen
-                                  result.success(textureId)
+                              flutterResult = result
+                              // 1. Request Camera Permission Runtime
+                              if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                                  requestPermissions(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO), 101)
                               } else {
-                                  result.error("UNAVAILABLE", "Failed to get texture", null)
+                                  startPhysicalCamera()
                               }
                           }
-                          "updateDepth" -> {
-                              val intensity = call.argument<Double>("intensity")?.toFloat() ?: 0.5f
-                              renderer.setBlur(intensity)
-                              result.success(null)
-                          }
-                          "updateColor" -> {
-                              val balance = call.argument<Double>("balance")?.toFloat() ?: 1.0f
-                              renderer.setColor(balance)
-                              result.success(null)
-                          }
-                          "toggleRecord" -> {
-                              // Record logic
-                              result.success(null)
-                          }
+                          "updateDepth" -> result.success(null)
+                          "updateColor" -> result.success(null)
+                          "toggleRecord" -> result.success(null)
                           else -> result.notImplemented()
                       }
+                  }
+              }
+
+              // 2. Handle Permission Result
+              override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+                  super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+                  if (requestCode == 101 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                      startPhysicalCamera()
+                  } else {
+                      flutterResult?.error("PERMISSION_DENIED", "Camera access is required", null)
+                  }
+              }
+
+              // 3. Connect Hardware Camera Lens to Flutter Texture
+              private fun startPhysicalCamera() {
+                  try {
+                      textureEntry = myFlutterEngine?.renderer?.createSurfaceTexture()
+                      val surfaceTexture = textureEntry?.surfaceTexture()
+                      // Set HD Preview size
+                      surfaceTexture?.setDefaultBufferSize(1080, 1920)
+                      val surface = Surface(surfaceTexture)
+
+                      val manager = getSystemService(CAMERA_SERVICE) as CameraManager
+                      // Automatically pick the back camera
+                      val cameraId = manager.cameraIdList.firstOrNull {
+                          manager.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
+                      } ?: manager.cameraIdList[0]
+
+                      manager.openCamera(cameraId, object : CameraDevice.StateCallback() {
+                          override fun onOpened(camera: CameraDevice) {
+                              val requestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
+                              requestBuilder.addTarget(surface)
+                              
+                              camera.createCaptureSession(listOf(surface), object : CameraCaptureSession.StateCallback() {
+                                  override fun onConfigured(session: CameraCaptureSession) {
+                                      // Start pushing live frames to Flutter
+                                      session.setRepeatingRequest(requestBuilder.build(), null, null)
+                                      
+                                      // Send texture ID back to stop the Flutter loading spinner
+                                      flutterResult?.success(textureEntry?.id())
+                                  }
+                                  override fun onConfigureFailed(session: CameraCaptureSession) {
+                                      flutterResult?.error("CAMERA_FAILED", "Failed to lock camera feed", null)
+                                  }
+                              }, null)
+                          }
+                          override fun onDisconnected(camera: CameraDevice) { camera.close() }
+                          override fun onError(camera: CameraDevice, error: Int) { camera.close() }
+                      }, null)
+                  } catch (e: SecurityException) {
+                      flutterResult?.error("SECURITY_ERROR", e.message, null)
+                  } catch (e: Exception) {
+                      flutterResult?.error("CAMERA_ERROR", e.message, null)
                   }
               }
           }
@@ -142,7 +163,7 @@ jobs:
           # NDK Fix
           sed -i '/defaultConfig {/i \    ndkVersion = "26.1.10909125"' android/app/build.gradle
           
-          # App name label
+          # Fix the label without breaking the package name
           sed -i 's/android:label="and"/android:label="Bokeh Camera"/g' android/app/src/main/AndroidManifest.xml
 
       # ─── 🛠️ PAGE SIZE FIX & PACKAGING OPTIONS ───
