@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'camera_service.dart';
+import 'package:flutter/services.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -9,6 +9,34 @@ void main() {
   ));
 }
 
+// ─── 📸 INTERFACE WITH PLATFORM CHANNEL GLUE ───
+class BokehCameraService {
+  static const _channel = MethodChannel('blur.bokeh.and/camera');
+
+  Future<int?> initializeCamera() async {
+    try {
+      final int? textureId = await _channel.invokeMethod('initializeCamera');
+      return textureId;
+    } on PlatformException catch (e) {
+      debugPrint("Failed to boot native camera: ${e.message}");
+      return null;
+    }
+  }
+
+  Future<void> updateDepthIntensity(double intensity) async {
+    await _channel.invokeMethod('updateDepth', {'intensity': intensity});
+  }
+
+  Future<void> updateColorBalance(double balance) async {
+    await _channel.invokeMethod('updateColor', {'balance': balance});
+  }
+
+  Future<void> toggleRecording(bool start, String ratio) async {
+    await _channel.invokeMethod('toggleRecord', {'start': start, 'ratio': ratio});
+  }
+}
+
+// ─── 🎞️ PROFESSIONAL MINIMAL UI LAYOUT ───
 class BokehHomeScreen extends StatefulWidget {
   const BokehHomeScreen({super.key});
 
@@ -43,7 +71,7 @@ class _BokehHomeScreenState extends State<BokehHomeScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Texture output directly mapping native camera stream via GPU pointer
+          // GPU Pointer directly rendering texture layers mapping native camera
           if (_textureId != null)
             Center(
               child: ClipRRect(
@@ -54,7 +82,12 @@ class _BokehHomeScreenState extends State<BokehHomeScreen> {
               ),
             )
           else
-            const Center(child: CircularProgressIndicator(color: Colors.white)),
+            const Center(
+              child: CircularProgressIndicator(
+                color: Colors.white,
+                strokeWidth: 2,
+              ),
+            ),
 
           _buildTopMenu(),
           _buildBottomPanel(),
@@ -73,7 +106,7 @@ class _BokehHomeScreenState extends State<BokehHomeScreen> {
             decoration: BoxDecoration(
               color: Colors.black38,
               borderRadius: BorderRadius.circular(30),
-              border: Border.all(color: Colors.white10, width: 1)
+              border: Border.all(color: Colors.white10, width: 1),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
             child: Row(
@@ -91,7 +124,7 @@ class _BokehHomeScreenState extends State<BokehHomeScreen> {
                     style: TextStyle(
                       color: _aspectRatio == ratio ? Colors.black : Colors.white,
                       fontWeight: FontWeight.w600,
-                      fontSize: 13
+                      fontSize: 13,
                     ),
                   ),
                 ),
@@ -108,11 +141,13 @@ class _BokehHomeScreenState extends State<BokehHomeScreen> {
       bottom: 0, left: 0, right: 0,
       child: Container(
         padding: const EdgeInsets.fromLTRB(32, 24, 32, 48),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Colors.transparent, Colors.black95],
-            begin: Alignment.topCenter, end: Alignment.bottomCenter
-          )
+            // FIX: Fixed compile crash error by removing black95 artifact pattern
+            colors: [Colors.transparent, Colors.black.withOpacity(0.95)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -128,7 +163,7 @@ class _BokehHomeScreenState extends State<BokehHomeScreen> {
             }, minVal: 0.5, maxVal: 1.5),
             const SizedBox(height: 32),
             
-            // Record Shutter Trigger Button
+            // Record Shutter Trigger Component
             GestureDetector(
               onTap: () {
                 setState(() => _isRecording = !_isRecording);
@@ -139,17 +174,17 @@ class _BokehHomeScreenState extends State<BokehHomeScreen> {
                 height: 80, width: 80,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 4)
+                  border: Border.all(color: Colors.white, width: 4),
                 ),
                 padding: EdgeInsets.all(_isRecording ? 22 : 6),
                 child: Container(
                   decoration: BoxDecoration(
                     color: _isRecording ? Colors.red : Colors.white,
-                    borderRadius: BorderRadius.circular(_isRecording ? 8 : 40)
+                    borderRadius: BorderRadius.circular(_isRecording ? 8 : 40),
                   ),
                 ),
               ),
-            )
+            ),
           ],
         ),
       ),
@@ -160,7 +195,15 @@ class _BokehHomeScreenState extends State<BokehHomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(color: Colors.white60, fontSize: 10, letterSpacing: 1.5, fontWeight: FontWeight.bold)),
+        Text(
+          title, 
+          style: const TextStyle(
+            color: Colors.white60, 
+            fontSize: 10, 
+            letterSpacing: 1.5, 
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         Row(
           children: [
             Expanded(
