@@ -20,5 +20,4 @@ flutter:
   uses-material-design: true
   
   # Ensure your MediaPipe selfie segmenter model asset is declared here
-  assets:
-    - assets/selfie_segmenter.tflite
+  
